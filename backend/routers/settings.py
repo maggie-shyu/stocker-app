@@ -1,0 +1,27 @@
+from fastapi import APIRouter, Depends
+
+from models.schemas import CommissionSettings
+from routers.deps import get_csv_service
+from services.csv_service import CsvService
+
+
+router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+@router.get("", response_model=CommissionSettings)
+def read_settings(service: CsvService = Depends(get_csv_service)):
+    return CommissionSettings(
+        commission_discount_rate=service.get_commission_discount_rate()
+    )
+
+
+@router.put("", response_model=CommissionSettings)
+def update_settings(
+    payload: CommissionSettings,
+    service: CsvService = Depends(get_csv_service),
+):
+    return CommissionSettings(
+        commission_discount_rate=service.set_commission_discount_rate(
+            payload.commission_discount_rate
+        )
+    )

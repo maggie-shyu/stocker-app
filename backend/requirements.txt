@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+openpyxl
+httpx
+pydantic
+cachetools
+python-multipart
+pytest
