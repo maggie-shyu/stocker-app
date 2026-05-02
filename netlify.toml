@@ -1,0 +1,20 @@
+[build]
+  base = "frontend"
+  publish = "dist"
+  command = "npm run build"
+
+# We use this proxy so we don't have to deal with CORS. 
+# But you must manually update the destination URL once Render is deployed.
+# Wait, actually since we made VITE_API_URL configurable in client.ts,
+# we do NOT need this proxy if you set VITE_API_URL.
+# BUT, if we want to bypass CORS completely without VITE_API_URL, we can uncomment the below:
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://your-backend-url.onrender.com/api/:splat"
+#   status = 200
+#   force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
