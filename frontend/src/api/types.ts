@@ -40,7 +40,10 @@ export type Dashboard = {
   account_pnl_rate: number;
   annualized_return_rate: number;
   today_pnl: number;
+  today_pnl_rate: number;
   dividend_income: number;
+  benchmark_return_rate?: number;
+  start_date?: string;
   holdings_pie: HoldingPieItem[];
   recent_transactions: Transaction[];
   price_status: {
@@ -117,8 +120,15 @@ export type Cashflow = {
   withdrawal: number;
 };
 
-export type CommissionSettings = {
+export type UserSettings = {
   commission_discount_rate: number;
+  base_commission_rate: number;
+  minimum_fee: number;
+  odd_lot_minimum_fee: number;
+  stock_tax_rate: number;
+  day_trade_tax_rate: number;
+  etf_tax_rate: number;
+  bond_etf_tax_rate: number;
 };
 
 export type AdminCapabilities = {

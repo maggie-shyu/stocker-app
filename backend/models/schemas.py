@@ -82,8 +82,15 @@ class CashflowCreate(BaseModel):
     withdrawal: float = 0
 
 
-class CommissionSettings(BaseModel):
-    commission_discount_rate: float = Field(ge=0, le=1)
+class UserSettings(BaseModel):
+    commission_discount_rate: float = Field(ge=0, le=1, default=1.0)
+    base_commission_rate: float = Field(ge=0, default=0.001425)
+    minimum_fee: float = Field(ge=0, default=20.0)
+    odd_lot_minimum_fee: float = Field(ge=0, default=1.0)
+    stock_tax_rate: float = Field(ge=0, default=0.003)
+    day_trade_tax_rate: float = Field(ge=0, default=0.0015)
+    etf_tax_rate: float = Field(ge=0, default=0.001)
+    bond_etf_tax_rate: float = Field(ge=0, default=0.0)
 
 
 class AuthenticatedUser(BaseModel):
@@ -207,6 +214,7 @@ class PortfolioSnapshot(BaseModel):
     account_pnl_rate: float
     annualized_return_rate: float
     today_pnl: float
+    today_pnl_rate: float
     dividend_income: float
 
 
@@ -230,7 +238,10 @@ class DashboardResponse(BaseModel):
     account_pnl_rate: float
     annualized_return_rate: float
     today_pnl: float
+    today_pnl_rate: float
     dividend_income: float
+    benchmark_return_rate: float | None = None
+    start_date: date | None = None
     holdings_pie: list[AccountOverviewHolding]
     recent_transactions: list[TransactionRecord]
     price_status: PriceStatus
@@ -239,6 +250,7 @@ class DashboardResponse(BaseModel):
 class PriceQuote(BaseModel):
     code: str
     price: float | None = None
+    previous_close: float | None = None
     name: str | None = None
     delayed: bool = False
     source: str = "twse"

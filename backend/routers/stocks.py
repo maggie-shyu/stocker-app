@@ -50,5 +50,5 @@ def preview_fee(
         code=code,
         shares=shares,
         amount=amount,
-        discount_rate=service.get_commission_discount_rate(),
+        settings=service.get_settings(),
     )

@@ -19,6 +19,7 @@ dependencies = [
   "python-jose[cryptography]",
   "python-dotenv",
   "PyJWT",
+  "yfinance",
 ]
 
 [project.optional-dependencies]

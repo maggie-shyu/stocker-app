@@ -310,7 +310,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("link", { name: /設定/ }));
     expect(await screen.findByRole("heading", { name: "設定" })).toBeInTheDocument();
-    expect(await screen.findByText("手續費折數")).toBeInTheDocument();
+    expect(await screen.findByText("手續費設定")).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "Open Admin" })).toBeInTheDocument();
   });
 
@@ -389,7 +389,7 @@ describe("App", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("link", { name: /設定/ }));
-    await user.click(await screen.findByRole("slider"));
+    await user.click(await screen.findByRole("button", { name: "調整手續費" }));
     await user.click(await screen.findByRole("button", { name: "儲存" }));
 
     await user.click(screen.getByRole("link", { name: /出入金/ }));
@@ -497,7 +497,7 @@ describe("App", () => {
           });
         }
         if (url === "/cashflow") return Promise.resolve({ data: [] });
-        if (url === "/settings") return Promise.resolve({ data: { commission_discount_rate: 0 } });
+        if (url === "/settings") return Promise.resolve({ data: { commission_discount_rate: 0, base_commission_rate: 0.001425, minimum_fee: 20, odd_lot_minimum_fee: 1, stock_tax_rate: 0.003, day_trade_tax_rate: 0.0015, etf_tax_rate: 0.001, bond_etf_tax_rate: 0 } });
         if (url === "/stocks/preview-fee") {
           return Promise.resolve({ data: { discounted_fee: 20, expense: 100020 } });
         }

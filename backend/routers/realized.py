@@ -35,14 +35,12 @@ def list_realized(
         for item in sorted(items, key=lambda item: (item.code, item.date))
     }
     dividend_by_stock_map: dict[str, DividendIncomeByStock] = {}
+    today = date.today()
     dividend_income = 0.0
     for tx in transactions:
         if tx.action != "股利":
             continue
-        last_sell_date = last_sell_by_code.get(tx.code)
-        if last_sell_date is None:
-            continue
-        if tx.date > last_sell_date:
+        if tx.date > today:
             continue
         if code and tx.code != code:
             continue

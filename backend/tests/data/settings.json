@@ -1,3 +1,10 @@
 {
-  "commission_discount_rate": 1.0
+  "commission_discount_rate": 1.0,
+  "base_commission_rate": 0.001425,
+  "minimum_fee": 20.0,
+  "odd_lot_minimum_fee": 1.0,
+  "stock_tax_rate": 0.003,
+  "day_trade_tax_rate": 0.0015,
+  "etf_tax_rate": 0.001,
+  "bond_etf_tax_rate": 0.0
 }

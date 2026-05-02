@@ -13,6 +13,7 @@ from backend.models.schemas import (
     RealizedTrade,
     TradeFinancials,
     TransactionRecord,
+    UserSettings,
 )
 
 
@@ -39,6 +40,11 @@ def _to_float(value: float | None) -> float:
 def _is_taiwan_etf_code(code: str | None) -> bool:
     normalized = (code or "").strip()
     return normalized.startswith("00")
+
+
+def _is_bond_etf_code(code: str | None) -> bool:
+    normalized = (code or "").strip()
+    return normalized.startswith("00") and normalized.upper().endswith("B")
 
 
 def _is_odd_lot(shares: float | None) -> bool:
@@ -92,29 +98,34 @@ def calculate_trade_financials(
     price: float | None = None,
     amount: float | None = None,
     current_price: float = 0,
-    discount_rate: float = 0,
+    settings: UserSettings | None = None,
 ) -> TradeFinancials:
     if amount is None:
         amount = float(shares or 0) * float(price or 0)
     else:
         amount = float(amount)
 
+    if not settings:
+        settings = UserSettings(commission_discount_rate=1.0)
+
     if action == "股利":
         return TradeFinancials(
             current_price=current_price,
             amount=amount,
             income=amount,
-            discount_rate=discount_rate,
+            discount_rate=settings.commission_discount_rate,
         )
 
-    raw_fee = amount * 0.001425
-    minimum_fee = 1 if _is_odd_lot(shares) else 20
-    discounted_fee = max(raw_fee * discount_rate, minimum_fee) if amount > 0 else 0
+    raw_fee = amount * settings.base_commission_rate
+    min_fee = settings.odd_lot_minimum_fee if _is_odd_lot(shares) else settings.minimum_fee
+    discounted_fee = max(raw_fee * settings.commission_discount_rate, min_fee) if amount > 0 else 0
     if action == "賣":
-        if _is_taiwan_etf_code(code):
-            tax_rate = 0.001
+        if _is_bond_etf_code(code):
+            tax_rate = settings.bond_etf_tax_rate
+        elif _is_taiwan_etf_code(code):
+            tax_rate = settings.etf_tax_rate
         else:
-            tax_rate = 0.0015 if trade_type == "當沖" else 0.003
+            tax_rate = settings.day_trade_tax_rate if trade_type == "當沖" else settings.stock_tax_rate
         tax = amount * tax_rate
         income = amount - discounted_fee - tax
         expense = 0
@@ -132,7 +143,7 @@ def calculate_trade_financials(
         trade_cost=_money(discounted_fee + tax),
         expense=_money(expense),
         income=_money(income),
-        discount_rate=discount_rate,
+        discount_rate=settings.commission_discount_rate,
     )
 
 
@@ -141,6 +152,7 @@ def compute_portfolio(
     transactions: list[TransactionRecord],
     cashflows: list,
     live_prices: dict[str, float] | None = None,
+    previous_closes: dict[str, float] | None = None,
     as_of: date | None = None,
 ) -> PortfolioSnapshot:
     lots_by_code: dict[str, deque[Lot]] = defaultdict(deque)
@@ -148,6 +160,8 @@ def compute_portfolio(
     current_prices: dict[str, float] = {}
     realized_trades: list[RealizedTrade] = []
     dividend_income = 0.0
+    today_pnl = 0.0
+    yesterday_stock_value = 0.0
 
     for tx in sorted(transactions, key=lambda item: (item.date, item.id)):
         names[tx.code] = tx.name
@@ -204,6 +218,11 @@ def compute_portfolio(
         total_shares = sum(lot.shares for lot in visible_lots)
         cost_basis = sum(lot.cost_basis for lot in visible_lots)
         current_price = current_prices.get(code, 0)
+        previous_close = (previous_closes or {}).get(code, current_price)
+        if total_shares > 0:
+            today_pnl += (current_price - previous_close) * total_shares
+            yesterday_stock_value += previous_close * total_shares
+        
         market_value = total_shares * current_price
         unrealized = market_value - cost_basis
         holdings.append(
@@ -223,8 +242,15 @@ def compute_portfolio(
         )
 
     holdings.sort(key=lambda item: item.market_value, reverse=True)
+    
+    today = date.today()
+    realized_dividend_income = 0.0
+    for tx in transactions:
+        if tx.action == "股利" and tx.date <= today:
+            realized_dividend_income += _to_float(tx.income)
+
     trade_realized_pnl = sum(item.realized_pnl for item in realized_trades)
-    realized_pnl = trade_realized_pnl + dividend_income
+    realized_pnl = trade_realized_pnl + realized_dividend_income
     realized_invested_capital = sum(item.cost_basis for item in realized_trades)
     cost_basis_open = sum(item.cost_basis for item in holdings)
     unrealized_pnl = stock_market_value - cost_basis_open
@@ -265,7 +291,8 @@ def compute_portfolio(
         account_pnl=_money(account_pnl),
         account_pnl_rate=(account_pnl / principal) if principal else 0,
         annualized_return_rate=annualized_return_rate,
-        today_pnl=0,
+        today_pnl=_money(today_pnl),
+        today_pnl_rate=(today_pnl / yesterday_stock_value) if yesterday_stock_value else 0,
         dividend_income=_money(dividend_income),
     )
 

@@ -1,4 +1,4 @@
-import { Copy, NotebookPen, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -7,7 +7,7 @@ import { portfolioQueryKeys, useInvalidateQueries } from "../api/query";
 import type { Transaction } from "../api/types";
 import { SortableHeader } from "../components/shared/SortableHeader";
 import { sortItems } from "../components/shared/sort";
-import { Badge, Button, Card, DataTableShell, EmptyState, Field, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
+import { Badge, Button, Card, EmptyState, Field, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
 import { money, price } from "../components/shared/format";
 import { useTransactions } from "../hooks/queries";
 
@@ -71,6 +71,13 @@ function signedAmountClass(value: number) {
   return "text-muted";
 }
 
+function formatVisibleRowRange(page: number, pageSize: number, total: number) {
+  if (total <= 0) return "顯示 0 筆";
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  return `顯示 ${start} - ${end} 筆`;
+}
+
 const INPUT =
   "min-h-11 w-full rounded-xl border border-line bg-white/85 px-3 py-2 text-sm text-ink shadow-sm transition placeholder:text-stone-400 focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/15";
 
@@ -82,6 +89,8 @@ export function Transactions() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const handleSort = (key: string) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -89,6 +98,7 @@ export function Transactions() {
       setSortKey(key);
       setSortDir("desc");
     }
+    setPage(1);
   };
 
   const sortedItems = useMemo(() => {
@@ -100,6 +110,11 @@ export function Transactions() {
       return (tx as unknown as Record<string, string | number>)[sortKey] ?? "";
     }, sortDir);
   }, [data, sortKey, sortDir]);
+
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedItems.slice(start, start + pageSize);
+  }, [sortedItems, page]);
 
   const stats = useMemo(() => {
     const items = data?.items ?? [];
@@ -403,51 +418,82 @@ export function Transactions() {
         </form>
       </Card>
 
-      <div className="grid gap-3 lg:hidden">
-        {sortedItems.length ? sortedItems.map((tx) => (
-          <article key={tx.id} className={`rounded-2xl border bg-panel p-4 shadow-card ${editingId === tx.id ? "border-accent" : "border-line"}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={tx.action === "買" ? "accent" : tx.action === "賣" ? "warn" : "good"}>{tx.action}</Badge>
-                  <span className="inline-flex items-start gap-1 font-bold">
-                    <span>{tx.code} {tx.name}</span>
-                    {tx.reason ? (
-                      <span className="group/note relative mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-muted">
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted">
-                          <NotebookPen className="h-3.5 w-3.5" />
-                        </span>
-                        <span className="pointer-events-none absolute right-0 top-0 z-20 w-72 -translate-y-[calc(100%+0.4rem)] rounded-xl border border-line bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-ink opacity-0 shadow-soft transition group-hover/note:opacity-100">
-                          {tx.reason}
-                        </span>
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-muted">{tx.date} · {tx.buy_shares ?? tx.sell_shares ?? "-"} 股</p>
-                {tx.action !== "股利" ? <p className="mt-1 text-sm text-muted">股價 {price(tradePrice(tx))}</p> : null}
-                {tradeFeeBreakdown(tx) ? <p className="mt-1 text-sm text-muted">{tradeFeeBreakdown(tx)}</p> : null}
-              </div>
-              <div className={`text-right font-bold ${signedAmountClass(signedCashflow(tx))}`}>{signedMoney(signedCashflow(tx))}</div>
+      <div className="rounded-2xl border border-line bg-white/75">
+        <div className="border-b border-line px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 className="font-semibold text-ink">明細列表</h3>
+              <p className="mt-1 text-sm text-muted">
+                {formatVisibleRowRange(page, pageSize, sortedItems.length)}
+              </p>
             </div>
-            <div className="mt-3 flex justify-end gap-1">
-              <Button type="button" tone="ghost" title="編輯" onClick={() => handleEdit(tx)}><Pencil className="h-4 w-4" /></Button>
-              <Button type="button" tone="ghost" title="複製" onClick={() => handleDuplicate(tx)}><Copy className="h-4 w-4" /></Button>
-              <Button type="button" tone="danger" title="刪除" onClick={() => handleDelete(tx)}><Trash2 className="h-4 w-4" /></Button>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max={Math.ceil(sortedItems.length / pageSize) || 1}
+                value={page}
+                onChange={(e) => setPage(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-12 rounded-lg border border-line bg-white px-2 py-2 text-center text-sm font-semibold text-ink"
+                title="跳轉至特定頁"
+              />
+              <span className="text-sm font-semibold text-muted">/ {Math.ceil(sortedItems.length / pageSize) || 1}</span>
             </div>
-          </article>
-        )) : (
-          <EmptyState title="尚無交易紀錄" description="新增買進、賣出或股利後，這裡會顯示交易卡片。" />
-        )}
-      </div>
+          </div>
+        </div>
 
-      <DataTableShell className="relative z-0 hidden overflow-visible lg:block" scrollClassName="overflow-x-auto overflow-y-visible">
-        <table className="w-full min-w-[50rem] table-fixed text-left text-sm">
-          <colgroup>
+        <div className="grid gap-3 p-4 lg:hidden">
+          {paginatedItems.length ? paginatedItems.map((tx) => (
+            <article key={tx.id} className="rounded-2xl border border-line bg-panel p-4 shadow-card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-bold">{tx.code} {tx.name}</div>
+                  <p className="mt-1 text-sm text-muted">{tx.date} · {tx.action}</p>
+                </div>
+                <div className={`text-right font-bold ${signedAmountClass(signedCashflow(tx))}`}>
+                  {signedMoney(signedCashflow(tx))}
+                  <div className="text-xs">{tx.buy_shares ?? tx.sell_shares ?? "-"} 股</div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted">股價</div>
+                  <div className="mt-1 font-semibold text-ink">{tradePrice(tx) ? price(tradePrice(tx)) : "-"}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted">費用</div>
+                  <div className="mt-1 font-semibold text-ink">{tradeFeeBreakdown(tx) || "股息"}</div>
+                </div>
+              </div>
+              {tx.reason ? (
+                <div className="mt-3 rounded-lg border border-line bg-white/50 p-2 text-xs text-muted">
+                  <span className="font-semibold">原因:</span> {tx.reason}
+                </div>
+              ) : null}
+              <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                <button onClick={() => handleEdit(tx)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-teal-50 hover:text-accent transition">
+                  <Pencil className="h-3 w-3" /> 編輯
+                </button>
+                <button onClick={() => handleDuplicate(tx)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-teal-50 hover:text-accent transition">
+                  <Copy className="h-3 w-3" /> 複製
+                </button>
+                <button onClick={() => handleDelete(tx)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-loss hover:bg-red-50 transition">
+                  <Trash2 className="h-3 w-3" /> 刪除
+                </button>
+              </div>
+            </article>
+          )) : (
+            <EmptyState title="尚無交易紀錄" description="新增買進、賣出或股利後，這裡會顯示交易卡片。" />
+          )}
+        </div>
+
+        <div className="relative z-0 hidden overflow-x-auto overflow-y-visible lg:block">
+          <table className="w-full min-w-[45rem] table-fixed text-left text-sm">
+            <colgroup>
             <col className="w-[4rem]" />
             <col className="w-[7rem]" />
             <col className="w-[3rem]" />
-            <col className="w-[4rem]" />
+            <col className="w-[3rem]" />
             <col className="w-[5rem]" />
           </colgroup>
           <thead className="bg-white/55 text-xs uppercase">
@@ -460,58 +506,37 @@ export function Transactions() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {sortedItems.map((tx) => (
-              <tr key={tx.id} className={`group ${editingId === tx.id ? "bg-teal-50/70" : "bg-panel/70 hover:bg-white/75"}`}>
+            {paginatedItems.map((tx) => (
+              <tr key={tx.id} className="group relative bg-panel/70 hover:bg-white/75">
                 <td className="px-4 py-3 text-muted">{tx.date}</td>
-                <td className="relative whitespace-normal break-words px-4 py-3 leading-5">
-                  <div className="inline-flex items-start gap-1">
-                    <span>{tx.code} {tx.name}</span>
-                    {tx.reason ? (
-                      <div className="group/note relative mt-0.5">
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted transition hover:text-ink">
-                          <NotebookPen className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="pointer-events-none absolute right-0 top-0 z-50 w-40 -translate-y-[calc(100%+0.45rem)] rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium leading-5 text-ink opacity-0 shadow-soft transition group-hover/note:opacity-100">
-                          {tx.reason}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </td>
+                <td className="px-4 py-3">{tx.code} {tx.name}</td>
                 <td className="px-4 py-3 text-right">{tradeShares(tx) || "-"}</td>
                 <td className="px-4 py-3 text-right">{tradePrice(tx) ? price(tradePrice(tx)) : "-"}</td>
-                <td className={`relative px-4 py-3 text-right font-semibold ${signedAmountClass(signedCashflow(tx))}`}>
+                <td className={`px-4 py-3 text-right font-semibold ${signedAmountClass(signedCashflow(tx))}`}>
                   <div>{signedMoney(signedCashflow(tx))}</div>
-                  {tradeFeeBreakdown(tx) ? <div className="mt-1 text-xs font-normal text-muted">{tradeFeeBreakdown(tx)}</div> : null}
-                  <div className="pointer-events-none absolute right-4 top-1/2 z-20 flex -translate-y-1/2 justify-start">
-                    <div className="pointer-events-auto inline-flex translate-y-1 items-center overflow-hidden rounded-2xl border border-line bg-white/95 opacity-0 shadow-soft transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
-                      <button
-                        type="button"
-                        title="編輯"
-                        onClick={() => handleEdit(tx)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-teal-50 hover:text-accent focus:bg-teal-50 focus:text-accent"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <span className="h-5 w-px bg-line" aria-hidden="true" />
-                      <button
-                        type="button"
-                        title="複製"
-                        onClick={() => handleDuplicate(tx)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-teal-50 hover:text-accent focus:bg-teal-50 focus:text-accent"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                      <span className="h-5 w-px bg-line" aria-hidden="true" />
-                      <button
-                        type="button"
-                        title="刪除"
-                        onClick={() => handleDelete(tx)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-rose-50 hover:text-rose-600 focus:bg-rose-50 focus:text-rose-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                  <div className="mt-1 text-xs font-normal text-muted">{tradeFeeBreakdown(tx) || "股息"}</div>
+                  <div className="absolute inset-y-0 right-2 hidden items-center gap-1 group-hover:flex">
+                    <button
+                      onClick={() => handleEdit(tx)}
+                      title="編輯"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink shadow-sm hover:bg-teal-50 hover:text-accent transition"
+                    >
+                      <Pencil className="h-3 w-3" /> 編輯
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(tx)}
+                      title="複製"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink shadow-sm hover:bg-teal-50 hover:text-accent transition"
+                    >
+                      <Copy className="h-3 w-3" /> 複製
+                    </button>
+                    <button
+                      onClick={() => handleDelete(tx)}
+                      title="刪除"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-loss shadow-sm hover:bg-red-50 transition"
+                    >
+                      <Trash2 className="h-3 w-3" /> 刪除
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -519,15 +544,16 @@ export function Transactions() {
           </tbody>
           <tfoot className="border-t border-line bg-white/95 text-[0.7rem] font-bold text-muted">
             <tr>
-              <td className="px-4 py-2">{stats.count} 筆</td>
-              <td className="px-4 py-2" />
-              <td className="px-4 py-2" />
-              <td className="px-4 py-2" />
-              <td className={`px-4 py-2 text-right ${signedAmountClass(stats.amount)}`}>{signedMoney(stats.amount)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </DataTableShell>
+                <td className="px-4 py-3">{stats.count} 筆</td>
+                <td className="px-4 py-3" />
+                <td className="px-4 py-3" />
+                <td className="px-4 py-3" />
+                <td className={`px-4 py-3 text-right ${signedAmountClass(stats.amount)}`}>{signedMoney(stats.amount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

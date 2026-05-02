@@ -37,7 +37,7 @@ const navGroups = [
 ];
 
 export function AppShell() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   return (
     <div className="min-h-screen bg-paper text-ink lg:flex">

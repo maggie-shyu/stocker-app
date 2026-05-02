@@ -7,7 +7,7 @@ import { portfolioQueryKeys, useInvalidateQueries } from "../api/query";
 import type { Cashflow } from "../api/types";
 import { SortableHeader } from "../components/shared/SortableHeader";
 import { sortItems } from "../components/shared/sort";
-import { Button, Card, DataTableShell, EmptyState, Field, PageHeader, SkeletonBlock } from "../components/shared/UI";
+import { Button, Card, EmptyState, Field, PageHeader, SkeletonBlock } from "../components/shared/UI";
 import { money } from "../components/shared/format";
 import { useCashflows } from "../hooks/queries";
 
@@ -32,6 +32,8 @@ export function CashFlow() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const handleSort = (key: string) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -39,12 +41,18 @@ export function CashFlow() {
       setSortKey(key);
       setSortDir("desc");
     }
+    setPage(1);
   };
 
   const sortedRows = useMemo(() => {
     const rows = data ?? [];
     return sortItems(rows, (row) => (row as unknown as Record<string, string | number>)[sortKey] ?? "", sortDir);
   }, [data, sortKey, sortDir]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page]);
 
   const stats = useMemo(() => {
     const rows = data ?? [];
@@ -146,30 +154,60 @@ export function CashFlow() {
         </form>
       </Card>
 
-      <div className="grid gap-3 lg:hidden">
-        {sortedRows.length ? sortedRows.map((row: Cashflow) => (
-          <article key={row.id} className={`rounded-2xl border bg-panel p-4 shadow-card ${editingId === row.id ? "border-accent" : "border-line"}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-bold">{row.date}</div>
-              </div>
-              <div className="text-right text-sm">
-                <div className="font-bold text-gain">入金 {money(row.deposit)}</div>
-                <div className="font-bold text-loss">出金 {money(row.withdrawal)}</div>
-              </div>
+      <div className="rounded-2xl border border-line bg-white/75">
+        <div className="border-b border-line px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 className="font-semibold text-ink">明細列表</h3>
+              <p className="mt-1 text-sm text-muted">
+                {sortedRows.length <= 0 ? "顯示 0 筆" : `顯示 ${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, sortedRows.length)} 筆`}
+              </p>
             </div>
-            <div className="mt-3 flex justify-end gap-1">
-              <Button type="button" tone="ghost" title="編輯" onClick={() => handleEdit(row)}><Pencil className="h-4 w-4" /></Button>
-              <Button type="button" tone="ghost" title="複製" onClick={() => handleDuplicate(row)}><Copy className="h-4 w-4" /></Button>
-              <Button type="button" tone="danger" title="刪除" onClick={() => handleDelete(row)}><Trash2 className="h-4 w-4" /></Button>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max={Math.ceil(sortedRows.length / pageSize) || 1}
+                value={page}
+                onChange={(e) => setPage(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-12 rounded-lg border border-line bg-white px-2 py-2 text-center text-sm font-semibold text-ink"
+                title="跳轉至特定頁"
+              />
+              <span className="text-sm font-semibold text-muted">/ {Math.ceil(sortedRows.length / pageSize) || 1}</span>
             </div>
-          </article>
-        )) : (
-          <EmptyState title="尚無出入金紀錄" description="新增第一筆入金後，這裡會顯示資金流。" />
-        )}
-      </div>
+          </div>
+        </div>
 
-      <DataTableShell className="hidden lg:block">
+        <div className="grid gap-3 p-4 lg:hidden">
+          {paginatedRows.length ? paginatedRows.map((row: Cashflow) => (
+            <article key={row.id} className="rounded-2xl border border-line bg-panel p-4 shadow-card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-bold">{row.date}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-gain">入金 {money(row.deposit)}</div>
+                  <div className="font-bold text-loss">出金 {money(row.withdrawal)}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                <button onClick={() => handleEdit(row)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-teal-50 hover:text-accent transition">
+                  <Pencil className="h-3 w-3" /> 編輯
+                </button>
+                <button onClick={() => handleDuplicate(row)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-teal-50 hover:text-accent transition">
+                  <Copy className="h-3 w-3" /> 複製
+                </button>
+                <button onClick={() => handleDelete(row)} className="flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-loss hover:bg-red-50 transition">
+                  <Trash2 className="h-3 w-3" /> 刪除
+                </button>
+              </div>
+            </article>
+          )) : (
+            <EmptyState title="尚無出入金紀錄" description="新增第一筆入金後，這裡會顯示資金流。" />
+          )}
+        </div>
+
+        <div className="relative z-0 hidden overflow-x-auto overflow-y-visible lg:block">
         <table className="w-full min-w-[42rem] table-fixed text-left text-sm">
           <colgroup>
             <col className="w-[8rem]" />
@@ -184,41 +222,34 @@ export function CashFlow() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {sortedRows.map((row: Cashflow) => (
-              <tr key={row.id} className={`group ${editingId === row.id ? "bg-teal-50/70" : "bg-panel/70 hover:bg-white/75"}`}>
+            {paginatedRows.map((row: Cashflow) => (
+              <tr key={row.id} className="group relative bg-panel/70 hover:bg-white/75">
                 <td className="px-4 py-3">{row.date}</td>
                 <td className="px-4 py-3 text-right font-semibold text-gain">{money(row.deposit)}</td>
-                <td className="relative px-4 py-3 text-right font-semibold text-loss">
+                <td className="px-4 py-3 text-right font-semibold text-loss">
                   {money(row.withdrawal)}
-                  <div className="pointer-events-none absolute right-4 top-1/2 z-20 flex -translate-y-1/2 justify-start">
-                    <div className="pointer-events-auto inline-flex translate-y-1 items-center overflow-hidden rounded-2xl border border-line bg-white/95 opacity-0 shadow-soft transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
-                      <button
-                        type="button"
-                        title="編輯"
-                        onClick={() => handleEdit(row)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-teal-50 hover:text-accent focus:bg-teal-50 focus:text-accent"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <span className="h-5 w-px bg-line" aria-hidden="true" />
-                      <button
-                        type="button"
-                        title="複製"
-                        onClick={() => handleDuplicate(row)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-teal-50 hover:text-accent focus:bg-teal-50 focus:text-accent"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                      <span className="h-5 w-px bg-line" aria-hidden="true" />
-                      <button
-                        type="button"
-                        title="刪除"
-                        onClick={() => handleDelete(row)}
-                        className="inline-flex h-10 w-14 items-center justify-center text-muted transition hover:bg-rose-50 hover:text-rose-600 focus:bg-rose-50 focus:text-rose-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                  <div className="absolute inset-y-0 right-2 hidden items-center gap-1 group-hover:flex">
+                    <button
+                      onClick={() => handleEdit(row)}
+                      title="編輯"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink shadow-sm hover:bg-teal-50 hover:text-accent transition"
+                    >
+                      <Pencil className="h-3 w-3" /> 編輯
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(row)}
+                      title="複製"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink shadow-sm hover:bg-teal-50 hover:text-accent transition"
+                    >
+                      <Copy className="h-3 w-3" /> 複製
+                    </button>
+                    <button
+                      onClick={() => handleDelete(row)}
+                      title="刪除"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-loss shadow-sm hover:bg-red-50 transition"
+                    >
+                      <Trash2 className="h-3 w-3" /> 刪除
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -232,7 +263,8 @@ export function CashFlow() {
             </tr>
           </tfoot>
         </table>
-      </DataTableShell>
+        </div>
+      </div>
     </section>
   );
 }

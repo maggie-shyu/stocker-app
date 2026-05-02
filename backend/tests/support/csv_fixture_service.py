@@ -9,7 +9,7 @@ from pathlib import Path
 from backend.models.schemas import (
     CashflowCreate,
     CashflowRecord,
-    CommissionSettings,
+    UserSettings,
     StockLookup,
     TransactionCreate,
     TransactionRecord,
@@ -81,7 +81,7 @@ class CsvFixtureService:
         reason: str | None,
         current_price: float = 0,
     ) -> TransactionRecord:
-        discount_rate = self.get_commission_discount_rate()
+        settings = self.get_settings()
         shares, price = self._normalize_trade_inputs(
             action,
             buy_shares=buy_shares,
@@ -97,7 +97,7 @@ class CsvFixtureService:
             price=price,
             amount=dividend_income if action == "股利" else None,
             current_price=current_price,
-            discount_rate=discount_rate,
+            settings=settings,
         )
         return TransactionRecord(
             id=str(row_id),
@@ -307,21 +307,10 @@ class CsvFixtureService:
             rows.pop(row_index - 1)
             self._write_csv_rows("cashflow.csv", fieldnames, rows)
 
-    def get_commission_discount_rate(self) -> float:
+    def get_settings(self) -> UserSettings:
         path = self.data_dir / "settings.json"
         with open(path, encoding="utf-8") as fh:
-            settings = CommissionSettings(**json.load(fh))
-        return settings.commission_discount_rate
-
-    def set_commission_discount_rate(self, value: float) -> float:
-        path = self.data_dir / "settings.json"
-        with self._write_lock:
-            with open(path, encoding="utf-8") as fh:
-                data = json.load(fh)
-            data["commission_discount_rate"] = value
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-        return value
+            return UserSettings(**json.load(fh))
 
     def read_stocks(self) -> list[StockLookup]:
         if self._stock_cache is not None:

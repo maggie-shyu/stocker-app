@@ -4,6 +4,7 @@ from datetime import date
 from typing import Any
 
 from backend.models.schemas import (
+    UserSettings,
     CashflowCreate,
     CashflowRecord,
     StockLookup,
@@ -30,7 +31,7 @@ class SupabaseService:
     def _build_tx_record(
         self,
         row: dict[str, Any],
-        discount_rate: float,
+        settings: UserSettings,
         *,
         current_price: float = 0.0,
     ) -> TransactionRecord:
@@ -56,7 +57,7 @@ class SupabaseService:
             price=price,
             amount=dividend_income if action == "股利" else None,
             current_price=current_price,
-            discount_rate=discount_rate,
+            settings=settings,
         )
         return TransactionRecord(
             id=str(row["id"]),
@@ -90,8 +91,8 @@ class SupabaseService:
             .execute()
             .data
         )
-        discount_rate = self.get_commission_discount_rate()
-        return [self._build_tx_record(row, discount_rate) for row in rows]
+        settings = self.get_settings()
+        return [self._build_tx_record(row, settings) for row in rows]
 
     def append_transaction(
         self,
@@ -114,11 +115,7 @@ class SupabaseService:
             "reason": payload.reason,
         }
         data = self._db.table("transactions").insert(row).execute().data[0]
-        return self._build_tx_record(
-            data,
-            self.get_commission_discount_rate(),
-            current_price=current_price,
-        )
+        return self._build_tx_record(data, self.get_settings(), current_price=current_price)
 
     def replace_transactions(self, payloads: list[TransactionCreate]) -> int:
         (
@@ -172,7 +169,7 @@ class SupabaseService:
         )
         if not result.data:
             raise KeyError(tx_id)
-        return self._build_tx_record(result.data[0], self.get_commission_discount_rate())
+        return self._build_tx_record(result.data[0], self.get_settings())
 
     def delete_transaction(self, tx_id: str) -> None:
         result = (
@@ -280,30 +277,27 @@ class SupabaseService:
         if not result.data:
             raise KeyError(cf_id)
 
-    def get_commission_discount_rate(self) -> float:
+    def get_settings(self) -> UserSettings:
         result = (
             self._db.table("user_settings")
-            .select("commission_discount_rate")
+            .select(
+                "commission_discount_rate,base_commission_rate,minimum_fee,"
+                "odd_lot_minimum_fee,stock_tax_rate,day_trade_tax_rate,"
+                "etf_tax_rate,bond_etf_tax_rate"
+            )
             .eq("user_id", self._user_id)
             .maybe_single()
             .execute()
         )
         if result.data is None:
-            return 1.0
-        return float(result.data["commission_discount_rate"])
+            return UserSettings(commission_discount_rate=1.0)
+        return UserSettings(**result.data)
 
-    def set_commission_discount_rate(self, value: float) -> float:
-        (
-            self._db.table("user_settings")
-            .upsert(
-                {
-                    "user_id": self._user_id,
-                    "commission_discount_rate": value,
-                }
-            )
-            .execute()
-        )
-        return value
+    def update_settings(self, settings: UserSettings) -> UserSettings:
+        data = settings.model_dump()
+        data["user_id"] = self._user_id
+        self._db.table("user_settings").upsert(data).execute()
+        return settings
 
     def read_stocks(self) -> list[StockLookup]:
         if self._stock_cache is not None:

@@ -1,7 +1,7 @@
-import { ChevronLeft, ChevronRight, TableProperties, Users } from "lucide-react";
+
 import { useEffect, useState } from "react";
 
-import { Badge, Button, Card, EmptyState, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
+import { Button, Card, EmptyState, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
 import { useAdminOverview, useAdminTableData, useAdminTables } from "../hooks/queries";
 
 
@@ -108,15 +108,10 @@ export function Admin() {
 
       <Card>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-3">
-            <span className="rounded-2xl bg-teal-50 p-3 text-accent">
-              <TableProperties className="h-5 w-5" aria-hidden="true" />
-            </span>
             <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold text-ink">資料表瀏覽</h2>
               <p className="mt-1 text-sm text-muted">只提供受控資料表的唯讀瀏覽，不支援直接編輯或刪除。</p>
             </div>
-          </div>
             <div className="w-full lg:max-w-xs">
               {tables.error ? (
                 <EmptyState title="資料表清單無法載入" description="請確認 admin API 可讀取受控資料表，或重新整理後再試一次。" />
@@ -140,41 +135,28 @@ export function Admin() {
             <div className="rounded-2xl border border-line bg-white/75">
               <div className="border-b border-line px-4 py-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-accent" aria-hidden="true" />
-                    <div>
-                      <h3 className="font-semibold text-ink">{tableData.data?.label ?? "資料表內容"}</h3>
-                      <p className="mt-1 text-sm text-muted">
-                        {formatVisibleRowRange(
-                          tableData.data?.page ?? page,
-                          tableData.data?.page_size ?? pageSize,
-                          tableData.data?.total ?? 0,
-                        )}
-                      </p>
-                    </div>
+                  <div>
+                  <h3 className="font-semibold text-ink">{tableData.data?.label ?? "資料表內容"}</h3>
+                  <p className="mt-1 text-sm text-muted">
+                      {formatVisibleRowRange(
+                        tableData.data?.page ?? page,
+                        tableData.data?.page_size ?? pageSize,
+                        tableData.data?.total ?? 0,
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      tone="secondary"
-                      disabled={page <= 1 || tableData.isLoading}
-                      onClick={() => setPage((current) => Math.max(1, current - 1))}
-                      aria-label="上一頁"
-                    >
-                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                      上一頁
-                    </Button>
-                    <span className="min-w-24 text-center text-sm font-semibold text-muted">
-                      第 {page} 頁
-                    </span>
-                    <Button
-                      tone="secondary"
-                      disabled={tableData.isLoading || ((tableData.data?.page ?? page) * pageSize >= (tableData.data?.total ?? 0))}
-                      onClick={() => setPage((current) => current + 1)}
-                      aria-label="下一頁"
-                    >
-                      下一頁
-                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                    <input
+                      type="number"
+                      min="1"
+                      max={Math.ceil((tableData.data?.total ?? 0) / pageSize) || 1}
+                      value={page}
+                      onChange={(e) => setPage(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-12 rounded-lg border border-line bg-white px-2 py-2 text-center text-sm font-semibold text-ink"
+                      title="跳轉至特定頁"
+                      disabled={tableData.isLoading}
+                    />
+                    <span className="text-sm font-semibold text-muted">/ {Math.ceil((tableData.data?.total ?? 0) / pageSize) || 1}</span>
                   </div>
                 </div>
               </div>
@@ -189,11 +171,11 @@ export function Admin() {
                 </div>
               ) : tableData.data?.items.length ? (
                 <div className="max-h-[34rem] overflow-auto">
-                  <table className="min-w-[1100px] divide-y divide-line text-sm">
+                <table className="min-w-[1100px] divide-y divide-line text-sm">
                     <thead className="bg-stone-50/80">
                       <tr>
                         {tableData.data.columns.map((column) => (
-                          <th key={column} className="px-4 py-3 text-left font-semibold text-muted">
+                          <th key={column} className="sticky top-0 z-20 bg-stone-50/80 px-4 py-3 text-left font-semibold text-muted">
                             {column}
                           </th>
                         ))}

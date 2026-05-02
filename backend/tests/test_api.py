@@ -74,7 +74,8 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def stable_discount_rate(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(CsvFixtureService, "get_commission_discount_rate", lambda self: 0.0)
+    from backend.models.schemas import UserSettings
+    monkeypatch.setattr(CsvFixtureService, "get_settings", lambda self: UserSettings(commission_discount_rate=0.0))
     monkeypatch.setattr(CsvFixtureService, "read_stocks", lambda self: [])
 
 
@@ -98,9 +99,7 @@ def test_settings_endpoint_returns_commission_discount():
     response = client.get("/api/settings")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "commission_discount_rate": _test_svc.get_commission_discount_rate()
-    }
+    assert response.json()["commission_discount_rate"] == _test_svc.get_settings().commission_discount_rate
 
 
 def test_admin_capabilities_endpoint_reports_admin_status(monkeypatch: pytest.MonkeyPatch):
@@ -263,7 +262,7 @@ def test_stock_fee_preview_endpoint():
         trade_type="一般",
         shares=1000,
         amount=100000,
-        discount_rate=_test_svc.get_commission_discount_rate(),
+        settings=_test_svc.get_settings(),
     )
     assert response.json()["discounted_fee"] == expected.discounted_fee
     assert response.json()["expense"] == expected.expense
@@ -281,7 +280,7 @@ def test_stock_fee_preview_endpoint_uses_odd_lot_minimum():
         trade_type="一般",
         shares=1,
         amount=10,
-        discount_rate=_test_svc.get_commission_discount_rate(),
+        settings=_test_svc.get_settings(),
     )
     assert response.json()["discounted_fee"] == expected.discounted_fee
     assert response.json()["expense"] == expected.expense
@@ -300,7 +299,7 @@ def test_stock_fee_preview_endpoint_uses_etf_tax_rate():
         trade_type="一般",
         shares=1000,
         amount=100000,
-        discount_rate=_test_svc.get_commission_discount_rate(),
+        settings=_test_svc.get_settings(),
     )
     assert response.json()["tax"] == expected.tax
 

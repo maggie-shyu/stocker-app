@@ -5,7 +5,7 @@ import type {
   AdminTablePage,
   AdminTableSummary,
   Cashflow,
-  CommissionSettings,
+  UserSettings,
   Dashboard,
   Holding,
   RealizedResponse,
@@ -33,7 +33,7 @@ export function useCashflows() {
 }
 
 export function useSettings() {
-  return useApiQuery<CommissionSettings>(queryKeys.settings, "/settings");
+  return useApiQuery<UserSettings>(queryKeys.settings, "/settings");
 }
 
 export function useAdminCapabilities(enabled = true) {

@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from backend.models.schemas import CashflowCreate, CashflowRecord, TransactionCreate
+from backend.models.schemas import CashflowCreate, CashflowRecord, TransactionCreate, UserSettings
 from backend.services.supabase_service import SupabaseService
 
 
@@ -31,7 +31,7 @@ def client():
 def test_read_transactions_empty(client):
     stub_read_chain(client, [])
     svc = make_service(client)
-    with patch.object(svc, "get_commission_discount_rate", return_value=0.0):
+    with patch.object(svc, "get_settings", return_value=UserSettings(commission_discount_rate=1.0)):
         assert svc.read_transactions() == []
 
 
@@ -56,7 +56,7 @@ def test_read_transactions_returns_records(client):
         ],
     )
     svc = make_service(client)
-    with patch.object(svc, "get_commission_discount_rate", return_value=0.0):
+    with patch.object(svc, "get_settings", return_value=UserSettings(commission_discount_rate=1.0)):
         result = svc.read_transactions()
     assert len(result) == 1
     assert result[0].id == TX_UUID
@@ -97,38 +97,44 @@ def test_read_cashflows_returns_plain_rows(client):
     assert result[1].withdrawal == 0.0
 
 
-def test_get_commission_discount_rate_returns_default_when_missing(client):
+def test_get_settings_returns_defaults_when_missing(client):
     table = MagicMock()
     client.table.return_value = table
     table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
     svc = make_service(client)
-    assert svc.get_commission_discount_rate() == 1.0
+    settings = svc.get_settings()
+    assert settings.commission_discount_rate == 1.0
 
 
-def test_get_commission_discount_rate_returns_stored_value(client):
+def test_get_settings_returns_stored_values(client):
     table = MagicMock()
     client.table.return_value = table
     table.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
-        "commission_discount_rate": 0.6
+        "commission_discount_rate": 0.6,
+        "base_commission_rate": 0.001425,
+        "minimum_fee": 20.0,
+        "odd_lot_minimum_fee": 1.0,
+        "stock_tax_rate": 0.003,
+        "day_trade_tax_rate": 0.0015,
+        "etf_tax_rate": 0.001,
+        "bond_etf_tax_rate": 0.0,
     }
     svc = make_service(client)
-    assert svc.get_commission_discount_rate() == 0.6
+    settings = svc.get_settings()
+    assert settings.commission_discount_rate == 0.6
+    assert settings.etf_tax_rate == 0.001
 
 
-def test_set_commission_discount_rate_upserts_row(client):
+def test_update_settings_upserts_row(client):
     table = MagicMock()
     client.table.return_value = table
     svc = make_service(client)
 
-    result = svc.set_commission_discount_rate(0.6)
+    settings = UserSettings(commission_discount_rate=0.6)
+    result = svc.update_settings(settings)
 
-    table.upsert.assert_called_once_with(
-        {
-            "user_id": USER_ID,
-            "commission_discount_rate": 0.6,
-        }
-    )
-    assert result == 0.6
+    table.upsert.assert_called_once()
+    assert result.commission_discount_rate == 0.6
 
 
 def test_search_stocks_filters_by_query(client):
@@ -165,7 +171,7 @@ def test_append_transaction_builds_record_with_current_price(client):
     ]
     svc = make_service(client)
 
-    with patch.object(svc, "get_commission_discount_rate", return_value=0.6):
+    with patch.object(svc, "get_settings", return_value=UserSettings(commission_discount_rate=0.6)):
         result = svc.append_transaction(
             TransactionCreate(
                 date=date(2025, 8, 6),
@@ -240,7 +246,7 @@ def test_update_transaction_returns_updated_record(client):
     ]
     svc = make_service(client)
 
-    with patch.object(svc, "get_commission_discount_rate", return_value=0.0):
+    with patch.object(svc, "get_settings", return_value=UserSettings(commission_discount_rate=1.0)):
         result = svc.update_transaction(
             TX_UUID,
             TransactionCreate(
