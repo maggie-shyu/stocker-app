@@ -120,3 +120,32 @@ export type Cashflow = {
 export type CommissionSettings = {
   commission_discount_rate: number;
 };
+
+export type AdminCapabilities = {
+  is_admin: boolean;
+};
+
+export type AdminOverview = {
+  total_users: number;
+  users_with_transactions: number;
+  users_with_cashflows: number;
+  supabase_memory_usage_percent: number | null;
+  database_space_used_bytes: number | null;
+};
+
+export type AdminTableSummary = {
+  name: string;
+  label: string;
+  description: string;
+  row_count: number;
+};
+
+export type AdminTablePage = {
+  table_name: string;
+  label: string;
+  page: number;
+  page_size: number;
+  total: number;
+  columns: string[];
+  items: Array<Record<string, string | number | boolean | null>>;
+};

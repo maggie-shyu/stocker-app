@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.routers import cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
+from backend.routers import admin, cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
 
 
 settings_obj = get_settings()
@@ -41,6 +41,7 @@ def health():
 
 
 app.include_router(settings.router)
+app.include_router(admin.router)
 app.include_router(stocks.router)
 app.include_router(cashflow.router)
 app.include_router(transactions.router)

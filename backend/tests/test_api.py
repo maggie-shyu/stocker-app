@@ -1,20 +1,73 @@
 from unittest.mock import AsyncMock
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.models.schemas import CashflowRecord, TransactionRecord
-from backend.routers.deps import get_price_service
-from backend.routers import stocks as stocks_router
+from backend.models.schemas import AuthenticatedUser, CashflowRecord, TransactionRecord
+from backend.routers.deps import get_admin_service, get_price_service
+from backend.routers import deps as deps_router, stocks as stocks_router
 from backend.services.calculator import calculate_trade_financials, compute_portfolio
 from backend.tests.support.csv_fixture_service import CsvFixtureService
 
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 TEST_DATA_DIR = Path(__file__).resolve().parent / "data"
 _test_svc = CsvFixtureService(TEST_DATA_DIR)
+
+
+class TestAdminService:
+    def get_overview(self):
+        return {
+            "total_users": 3,
+            "users_with_transactions": 2,
+            "users_with_cashflows": 2,
+            "supabase_memory_usage_percent": 58.0,
+            "database_space_used_bytes": 536870912,
+        }
+
+    def list_tables(self):
+        return [
+            {
+                "name": "transactions",
+                "label": "交易紀錄",
+                "description": "All transaction rows across users.",
+                "row_count": 5,
+            },
+            {
+                "name": "user_settings",
+                "label": "使用者設定",
+                "description": "Per-user settings rows.",
+                "row_count": 3,
+            },
+        ]
+
+    def read_table(self, table_name: str, *, page: int, page_size: int):
+        if table_name != "transactions":
+            raise KeyError(table_name)
+        return {
+            "table_name": "transactions",
+            "label": "交易紀錄",
+            "page": page,
+            "page_size": page_size,
+            "total": 73,
+            "columns": ["id", "user_id", "code"],
+            "items": (
+                [
+                    {"id": "tx-26", "user_id": TEST_USER_ID, "code": "2603"},
+                    {"id": "tx-27", "user_id": TEST_USER_ID, "code": "0050"},
+                ]
+                if page == 2
+                else [
+                    {"id": "tx-1", "user_id": TEST_USER_ID, "code": "2330"},
+                    {"id": "tx-2", "user_id": TEST_USER_ID, "code": "2317"},
+                ]
+            ),
+        }
+
+_test_admin_svc = TestAdminService()
 
 client = TestClient(app)
 
@@ -29,11 +82,16 @@ def stable_discount_rate(monkeypatch: pytest.MonkeyPatch):
 def override_auth():
     from backend.routers.deps import get_current_user, get_supabase_service
 
-    app.dependency_overrides[get_current_user] = lambda: TEST_USER_ID
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=TEST_USER_ID,
+        email="admin@example.com",
+    )
     app.dependency_overrides[get_supabase_service] = lambda: _test_svc
+    app.dependency_overrides[get_admin_service] = lambda: _test_admin_svc
     yield
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_supabase_service, None)
+    app.dependency_overrides.pop(get_admin_service, None)
 
 
 def test_settings_endpoint_returns_commission_discount():
@@ -43,6 +101,93 @@ def test_settings_endpoint_returns_commission_discount():
     assert response.json() == {
         "commission_discount_rate": _test_svc.get_commission_discount_rate()
     }
+
+
+def test_admin_capabilities_endpoint_reports_admin_status(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        deps_router,
+        "get_settings",
+        lambda: SimpleNamespace(admin_email_allowlist=["admin@example.com"]),
+    )
+
+    response = client.get("/api/admin/capabilities")
+
+    assert response.status_code == 200
+    assert response.json() == {"is_admin": True}
+
+
+def test_admin_capabilities_endpoint_reports_non_admin_for_other_emails(monkeypatch: pytest.MonkeyPatch):
+    from backend.routers.deps import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=TEST_USER_ID,
+        email="member@example.com",
+    )
+    monkeypatch.setattr(
+        deps_router,
+        "get_settings",
+        lambda: SimpleNamespace(admin_email_allowlist=["admin@example.com"]),
+    )
+
+    response = client.get("/api/admin/capabilities")
+
+    assert response.status_code == 200
+    assert response.json() == {"is_admin": False}
+
+
+def test_admin_overview_endpoint_requires_admin(monkeypatch: pytest.MonkeyPatch):
+    from backend.routers.deps import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=TEST_USER_ID,
+        email="member@example.com",
+    )
+    monkeypatch.setattr(
+        deps_router,
+        "get_settings",
+        lambda: SimpleNamespace(admin_email_allowlist=["admin@example.com"]),
+    )
+
+    response = client.get("/api/admin/overview")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admin access required"
+
+
+def test_admin_endpoints_return_overview_and_table_data(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        deps_router,
+        "get_settings",
+        lambda: SimpleNamespace(admin_email_allowlist=["admin@example.com"]),
+    )
+
+    overview = client.get("/api/admin/overview")
+    tables = client.get("/api/admin/tables")
+    table_rows = client.get("/api/admin/tables/transactions", params={"page": 1, "page_size": 2})
+
+    assert overview.status_code == 200
+    assert overview.json()["total_users"] == 3
+    assert overview.json()["database_space_used_bytes"] == 536870912
+    assert overview.json()["supabase_memory_usage_percent"] == 58.0
+    assert tables.status_code == 200
+    assert tables.json()[0]["name"] == "transactions"
+    assert table_rows.status_code == 200
+    assert table_rows.json()["columns"] == ["id", "user_id", "code"]
+    assert table_rows.json()["items"][0]["code"] == "2330"
+
+
+def test_admin_table_endpoint_supports_pagination(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        deps_router,
+        "get_settings",
+        lambda: SimpleNamespace(admin_email_allowlist=["admin@example.com"]),
+    )
+
+    response = client.get("/api/admin/tables/transactions", params={"page": 2, "page_size": 2})
+
+    assert response.status_code == 200
+    assert response.json()["page"] == 2
+    assert response.json()["items"][0]["code"] == "2603"
 
 
 def test_transactions_endpoint_returns_paginated_rows():

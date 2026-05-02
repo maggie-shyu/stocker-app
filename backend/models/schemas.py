@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -84,6 +84,40 @@ class CashflowCreate(BaseModel):
 
 class CommissionSettings(BaseModel):
     commission_discount_rate: float = Field(ge=0, le=1)
+
+
+class AuthenticatedUser(BaseModel):
+    id: str
+    email: str | None = None
+
+
+class CurrentUserCapabilities(BaseModel):
+    is_admin: bool
+
+
+class AdminOverview(BaseModel):
+    total_users: int
+    users_with_transactions: int
+    users_with_cashflows: int
+    supabase_memory_usage_percent: float | None = None
+    database_space_used_bytes: int | None = None
+
+
+class AdminTableSummary(BaseModel):
+    name: str
+    label: str
+    description: str
+    row_count: int
+
+
+class AdminTablePage(BaseModel):
+    table_name: str
+    label: str
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
+    columns: list[str]
+    items: list[dict[str, Any]]
 
 
 class AccountOverviewHolding(BaseModel):

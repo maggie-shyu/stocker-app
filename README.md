@@ -32,6 +32,7 @@ Backend variables:
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_KEY`
 - `SUPABASE_LEGACY_JWT_SECRET` or `SUPABASE_JWT_SECRET`
+- `ADMIN_EMAIL_ALLOWLIST` comma-separated emails allowed to open the app admin console
 
 Frontend variables:
 

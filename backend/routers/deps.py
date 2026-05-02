@@ -7,6 +7,7 @@ from jose import JWTError
 from jwt import PyJWKClient
 
 from backend.config import get_settings
+from backend.models.schemas import AuthenticatedUser
 from backend.services.price_service import PriceService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -75,10 +76,13 @@ def decode_supabase_token(token: str) -> dict:
         raise JWTError("Invalid or expired token") from exc
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> AuthenticatedUser:
     try:
         payload = decode_supabase_token(token)
-        return payload["sub"]
+        return AuthenticatedUser(
+            id=payload["sub"],
+            email=payload.get("email"),
+        )
     except (JWTError, KeyError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -86,10 +90,34 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
         ) from exc
 
 
-def get_supabase_service(user_id: str = Depends(get_current_user)):
+def get_supabase_service(user: AuthenticatedUser = Depends(get_current_user)):
     from backend.services.supabase_service import SupabaseService
 
-    return SupabaseService(get_supabase_client(), user_id)
+    return SupabaseService(get_supabase_client(), user.id)
+
+
+def is_admin_user(user: AuthenticatedUser) -> bool:
+    if not user.email:
+        return False
+    settings = get_settings()
+    return user.email.strip().lower() in settings.admin_email_allowlist
+
+
+def require_admin_user(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    if not is_admin_user(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user
+
+
+def get_admin_service(_: AuthenticatedUser = Depends(require_admin_user)):
+    from backend.services.admin_service import AdminService
+
+    return AdminService(get_supabase_client())
 
 
 @lru_cache

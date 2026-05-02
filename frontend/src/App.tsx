@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+import { AdminRouteGuard } from "./components/AdminRouteGuard";
 import { AppShell } from "./components/layout/AppShell";
 import { RouteGuard } from "./components/RouteGuard";
+import { Admin } from "./pages/Admin";
 import { CashFlow } from "./pages/CashFlow";
 import { Dashboard } from "./pages/Dashboard";
 import { Holdings } from "./pages/Holdings";
@@ -11,16 +14,19 @@ import { Realized } from "./pages/Realized";
 import { Settings } from "./pages/Settings";
 import { Transactions } from "./pages/Transactions";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      staleTime: 15_000
-    }
-  }
-});
-
 export default function App() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            staleTime: 15_000
+          }
+        }
+      })
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -34,6 +40,9 @@ export default function App() {
               <Route path="/realized" element={<Realized />} />
               <Route path="/cashflow" element={<CashFlow />} />
               <Route path="/settings" element={<Settings />} />
+              <Route element={<AdminRouteGuard />}>
+                <Route path="/admin" element={<Admin />} />
+              </Route>
             </Route>
           </Route>
         </Routes>

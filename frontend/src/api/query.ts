@@ -3,6 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
 export const queryKeys = {
+  adminCapabilities: ["admin-capabilities"] as const,
+  adminOverview: ["admin-overview"] as const,
+  adminTables: ["admin-tables"] as const,
+  adminTableData: ["admin-table-data"] as const,
   dashboard: ["dashboard"] as const,
   transactions: ["transactions"] as const,
   holdings: ["holdings"] as const,
@@ -11,9 +15,15 @@ export const queryKeys = {
   settings: ["settings"] as const,
 };
 
-export function useApiQuery<T>(queryKey: readonly string[], path: string, params?: Record<string, unknown>) {
+export function useApiQuery<T>(
+  queryKey: readonly unknown[],
+  path: string,
+  params?: Record<string, unknown>,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: [...queryKey, params ?? null],
+    enabled: options?.enabled,
     queryFn: async () => (await api.get<T>(path, params ? { params } : undefined)).data,
   });
 }

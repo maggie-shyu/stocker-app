@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.models.schemas import CashflowRecord, TransactionRecord
+from backend.models.schemas import AuthenticatedUser, CashflowRecord, TransactionRecord
 from backend.routers.deps import get_current_user, get_supabase_service
 from backend.routers import export as export_router
 
@@ -40,7 +40,10 @@ def override_deps():
     mock_svc.read_cashflows.return_value = [FAKE_CF]
     mock_svc.replace_transactions.return_value = 1
     mock_svc.replace_cashflows.return_value = 1
-    app.dependency_overrides[get_current_user] = lambda: "test-user"
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="test-user",
+        email="tester@example.com",
+    )
     app.dependency_overrides[get_supabase_service] = lambda: mock_svc
     yield
     app.dependency_overrides.clear()

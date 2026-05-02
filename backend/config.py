@@ -8,6 +8,13 @@ from pydantic import BaseModel
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
+def _parse_csv_env(name: str) -> list[str]:
+    value = os.getenv(name, "")
+    if not value.strip():
+        return []
+    return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+
 class Settings(BaseModel):
     app_name: str = "Stocker"
     data_dir: Path = Path(__file__).resolve().parent / "data"
@@ -26,6 +33,7 @@ class Settings(BaseModel):
     import_max_workbook_bytes: int = int(os.getenv("IMPORT_MAX_WORKBOOK_BYTES", str(25 * 1024 * 1024)))
     import_max_rows_per_sheet: int = int(os.getenv("IMPORT_MAX_ROWS_PER_SHEET", "5000"))
     price_lookup_max_codes: int = int(os.getenv("PRICE_LOOKUP_MAX_CODES", "50"))
+    admin_email_allowlist: list[str] = _parse_csv_env("ADMIN_EMAIL_ALLOWLIST")
 
 
 @lru_cache

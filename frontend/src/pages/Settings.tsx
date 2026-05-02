@@ -1,16 +1,18 @@
 import { Download, KeyRound, LogOut, SlidersHorizontal, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { portfolioQueryKeys, queryKeys, useInvalidateQueries } from "../api/query";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, Card, PageHeader, SkeletonBlock } from "../components/shared/UI";
 import { percent } from "../components/shared/format";
-import { useSettings } from "../hooks/queries";
+import { useAdminCapabilities, useSettings } from "../hooks/queries";
 
 export function Settings() {
   const { data, isLoading } = useSettings();
+  const adminCapabilities = useAdminCapabilities();
   const { signOut, updatePassword } = useAuth();
   const [rate, setRate] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -113,6 +115,11 @@ export function Settings() {
         eyebrow="Preferences"
         title="設定"
         description="調整會影響後續交易計算的全域設定。"
+        action={adminCapabilities.data?.is_admin ? (
+          <Link to="/admin" aria-label="Open Admin">
+            <Button tone="secondary">Open Admin</Button>
+          </Link>
+        ) : null}
       />
 
       <Card>

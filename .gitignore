@@ -5,6 +5,7 @@
 .codex/
 .claude/
 .agents/
+.worktrees/
 
 backend/.env
 frontend/.env

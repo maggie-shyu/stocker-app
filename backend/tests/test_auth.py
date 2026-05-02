@@ -4,6 +4,7 @@ import pytest
 from jose import JWTError
 from fastapi import HTTPException
 
+from backend.models.schemas import AuthenticatedUser
 from backend.routers import deps
 
 
@@ -122,12 +123,16 @@ def test_decode_supabase_token_uses_jwks_for_asymmetric_algorithms(monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_returns_subject(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(deps, "decode_supabase_token", lambda token: {"sub": "user-123"})
+async def test_get_current_user_returns_id_and_email(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        deps,
+        "decode_supabase_token",
+        lambda token: {"sub": "user-123", "email": "admin@example.com"},
+    )
 
-    user_id = await deps.get_current_user("signed-token")
+    user = await deps.get_current_user("signed-token")
 
-    assert user_id == "user-123"
+    assert user == AuthenticatedUser(id="user-123", email="admin@example.com")
 
 
 @pytest.mark.asyncio

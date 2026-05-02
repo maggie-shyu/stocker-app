@@ -1,11 +1,68 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
-const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock } = vi.hoisted(() => ({
+const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock, authState } = vi.hoisted(() => ({
+  authState: {
+    isAdmin: true,
+  },
   apiGetMock: vi.fn((url: string, config?: { params?: Record<string, string | number> }) => {
+    if (url === "/admin/capabilities") {
+      return Promise.resolve({ data: { is_admin: authState.isAdmin } });
+    }
+    if (url === "/admin/overview") {
+      return Promise.resolve({
+        data: {
+          total_users: 3,
+          users_with_transactions: 2,
+          users_with_cashflows: 2,
+          supabase_memory_usage_percent: 58.0,
+          database_space_used_bytes: 536870912,
+        },
+      });
+    }
+    if (url === "/admin/tables") {
+      return Promise.resolve({
+        data: [
+          {
+            name: "transactions",
+            label: "交易紀錄",
+            description: "All transaction rows across users.",
+            row_count: 5,
+          },
+          {
+            name: "user_settings",
+            label: "使用者設定",
+            description: "Per-user settings rows.",
+            row_count: 3,
+          },
+        ],
+      });
+    }
+    if (url === "/admin/tables/transactions") {
+      const page = Number(config?.params?.page ?? 1);
+      return Promise.resolve({
+        data: {
+          table_name: "transactions",
+          label: "交易紀錄",
+          page,
+          page_size: 25,
+          total: 73,
+          columns: ["id", "user_id", "code"],
+          items: page === 2
+            ? [
+                { id: "tx-26", user_id: "user-26", code: "2603" },
+                { id: "tx-27", user_id: "user-27", code: "0050" },
+              ]
+            : [
+                { id: "tx-1", user_id: "user-1", code: "2330" },
+                { id: "tx-2", user_id: "user-2", code: "2317" },
+              ],
+        },
+      });
+    }
     if (url === "/dashboard") {
       return Promise.resolve({
         data: {
@@ -53,6 +110,24 @@ const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock } = vi.hoisted(() => 
               income: 0,
               reason: "test",
             },
+          ],
+        },
+      });
+    }
+    if (url === "/admin/tables/user_settings") {
+      const page = Number(config?.params?.page ?? 1);
+      return Promise.resolve({
+        data: {
+          table_name: "user_settings",
+          label: "使用者設定",
+          page,
+          page_size: 25,
+          total: 3,
+          columns: ["user_id", "display_name"],
+          items: [
+            { user_id: "user-a", display_name: "Maggie" },
+            { user_id: "user-b", display_name: "Alex" },
+            { user_id: "user-c", display_name: "Jamie" },
           ],
         },
       });
@@ -170,7 +245,7 @@ const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock } = vi.hoisted(() => 
 
 vi.mock("./contexts/AuthContext", () => ({
   useAuth: () => ({
-    session: { access_token: "test-token" },
+    session: { access_token: "test-token", user: { email: "admin@example.com" } },
     loading: false,
     configError: null,
     signIn: vi.fn(),
@@ -190,6 +265,11 @@ vi.mock("./api/client", () => ({
 }));
 
 describe("App", () => {
+  beforeEach(() => {
+    authState.isAdmin = true;
+    window.history.pushState({}, "", "/");
+  });
+
   it("renders the dashboard shell and KPI cards", async () => {
     render(<App />);
 
@@ -231,6 +311,77 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: /設定/ }));
     expect(await screen.findByRole("heading", { name: "設定" })).toBeInTheDocument();
     expect(await screen.findByText("手續費折數")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Open Admin" })).toBeInTheDocument();
+  });
+
+  it("renders the admin console for admin users", async () => {
+    authState.isAdmin = true;
+    window.history.pushState({}, "", "/admin");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Admin Console" })).toBeInTheDocument();
+    expect(await screen.findByText("總使用者數")).toBeInTheDocument();
+    expect(await screen.findByText("RAM Usage")).toBeInTheDocument();
+    expect(await screen.findByText("Disk Space Used")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("交易紀錄")).toBeInTheDocument();
+    expect(await screen.findByText("512.0 MB")).toBeInTheDocument();
+    expect(await screen.findByText("顯示 1 - 25 列")).toBeInTheDocument();
+  });
+
+  it("paginates the admin table and requests later pages", async () => {
+    const user = userEvent.setup();
+    window.history.pushState({}, "", "/admin");
+    render(<App />);
+
+    expect(await screen.findByText("顯示 1 - 25 列")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "下一頁" }));
+
+    expect(apiGetMock).toHaveBeenCalledWith(
+      "/admin/tables/transactions",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          page: 2,
+          page_size: 25,
+        }),
+      }),
+    );
+    expect(await screen.findByText("2603")).toBeInTheDocument();
+    expect(await screen.findByText("顯示 26 - 50 列")).toBeInTheDocument();
+  });
+
+  it("switches the selected admin table and reloads the matching rows", async () => {
+    const user = userEvent.setup();
+    window.history.pushState({}, "", "/admin");
+    render(<App />);
+
+    const select = await screen.findByLabelText("Choose Table");
+    await user.selectOptions(select, "user_settings");
+
+    expect(apiGetMock).toHaveBeenCalledWith(
+      "/admin/tables/user_settings",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          page: 1,
+          page_size: 25,
+        }),
+      }),
+    );
+    expect(await screen.findByRole("heading", { name: "使用者設定" })).toBeInTheDocument();
+    expect(await screen.findByText("顯示 1 - 3 列")).toBeInTheDocument();
+    expect(await screen.findByText("Maggie")).toBeInTheDocument();
+  });
+
+  it("redirects non-admin users away from the admin route", async () => {
+    authState.isAdmin = false;
+    window.history.pushState({}, "", "/admin");
+
+    render(<App />);
+
+    expect(await screen.findByText("Stocker")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /儀表板/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Admin Console" })).not.toBeInTheDocument();
+    authState.isAdmin = true;
   });
 
   it("submits settings, cashflow, and transaction forms", async () => {
