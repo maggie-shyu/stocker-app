@@ -94,6 +94,7 @@ class CsvService:
         financials = calculate_trade_financials(
             action=action,
             trade_type=trade_type,
+            code=code,
             shares=shares,
             price=price,
             amount=dividend_income if action == "股利" else None,
@@ -101,7 +102,7 @@ class CsvService:
             discount_rate=discount_rate,
         )
         return TransactionRecord(
-            id=row_id,
+            id=str(row_id),
             date=tx_date,
             action=action,
             code=code,
@@ -216,18 +217,19 @@ class CsvService:
 
     def update_transaction(
         self,
-        row_id: int,
+        row_id: int | str,
         payload: TransactionCreate,
     ) -> TransactionRecord:
+        row_index = int(row_id)
         with self._write_lock:
             fieldnames, rows = self._read_csv_rows("transactions.csv")
-            if row_id < 1 or row_id > len(rows):
+            if row_index < 1 or row_index > len(rows):
                 raise KeyError(row_id)
-            rows[row_id - 1] = self._transaction_row_from_payload(payload)
+            rows[row_index - 1] = self._transaction_row_from_payload(payload)
             self._write_csv_rows("transactions.csv", fieldnames, rows)
 
         return self._build_transaction_record(
-            row_id=row_id,
+            row_id=row_index,
             tx_date=payload.date,
             action=payload.action,
             code=payload.code,
@@ -241,12 +243,13 @@ class CsvService:
             dividend_income=payload.dividend_income,
         )
 
-    def delete_transaction(self, row_id: int) -> None:
+    def delete_transaction(self, row_id: int | str) -> None:
+        row_index = int(row_id)
         with self._write_lock:
             fieldnames, rows = self._read_csv_rows("transactions.csv")
-            if row_id < 1 or row_id > len(rows):
+            if row_index < 1 or row_index > len(rows):
                 raise KeyError(row_id)
-            rows.pop(row_id - 1)
+            rows.pop(row_index - 1)
             self._write_csv_rows("transactions.csv", fieldnames, rows)
 
     # --- cashflows ---
@@ -254,20 +257,14 @@ class CsvService:
     def read_cashflows(self) -> list[CashflowRecord]:
         path = self.data_dir / "cashflow.csv"
         records: list[CashflowRecord] = []
-        running = 0.0
         with open(path, newline="", encoding="utf-8") as fh:
             for row_id, row in enumerate(csv.DictReader(fh), start=1):
-                deposit = self._float(row.get("deposit", ""))
-                withdrawal = self._float(row.get("withdrawal", ""))
-                running += deposit - withdrawal
-                is_principal = str(row.get("is_principal", "")).lower() in ("true", "1", "yes")
                 records.append(
                     CashflowRecord(
-                        id=row_id,
+                        id=str(row_id),
                         date=date.fromisoformat(row["date"]),
-                        deposit=deposit,
-                        withdrawal=withdrawal,
-                        principal_snapshot=running if is_principal else None,
+                        deposit=self._float(row.get("deposit", "")),
+                        withdrawal=self._float(row.get("withdrawal", "")),
                     )
                 )
         return records
@@ -275,11 +272,7 @@ class CsvService:
     def append_cashflow(self, payload: CashflowCreate) -> CashflowRecord:
         path = self.data_dir / "cashflow.csv"
         with self._write_lock:
-            # compute running principal for snapshot
             current = self.read_cashflows()
-            running = sum(r.deposit - r.withdrawal for r in current)
-            running += payload.deposit - payload.withdrawal
-            snapshot = running if payload.is_principal else None
 
             row_id = len(current) + 1
             with open(path, "a", newline="", encoding="utf-8") as fh:
@@ -288,7 +281,6 @@ class CsvService:
                     payload.date,
                     payload.deposit if payload.deposit else "",
                     payload.withdrawal if payload.withdrawal else "",
-                    "true" if payload.is_principal else "false",
                 ])
 
         return CashflowRecord(
@@ -296,30 +288,30 @@ class CsvService:
             date=payload.date,
             deposit=payload.deposit,
             withdrawal=payload.withdrawal,
-            principal_snapshot=snapshot,
         )
 
-    def update_cashflow(self, row_id: int, payload: CashflowCreate) -> CashflowRecord:
+    def update_cashflow(self, row_id: int | str, payload: CashflowCreate) -> CashflowRecord:
+        row_index = int(row_id)
         with self._write_lock:
             fieldnames, rows = self._read_csv_rows("cashflow.csv")
-            if row_id < 1 or row_id > len(rows):
+            if row_index < 1 or row_index > len(rows):
                 raise KeyError(row_id)
-            rows[row_id - 1] = {
+            rows[row_index - 1] = {
                 "date": str(payload.date),
                 "deposit": payload.deposit if payload.deposit else "",
                 "withdrawal": payload.withdrawal if payload.withdrawal else "",
-                "is_principal": "true" if payload.is_principal else "false",
             }
             self._write_csv_rows("cashflow.csv", fieldnames, rows)
 
-        return self.read_cashflows()[row_id - 1]
+        return self.read_cashflows()[row_index - 1]
 
-    def delete_cashflow(self, row_id: int) -> None:
+    def delete_cashflow(self, row_id: int | str) -> None:
+        row_index = int(row_id)
         with self._write_lock:
             fieldnames, rows = self._read_csv_rows("cashflow.csv")
-            if row_id < 1 or row_id > len(rows):
+            if row_index < 1 or row_index > len(rows):
                 raise KeyError(row_id)
-            rows.pop(row_id - 1)
+            rows.pop(row_index - 1)
             self._write_csv_rows("cashflow.csv", fieldnames, rows)
 
     # --- settings ---

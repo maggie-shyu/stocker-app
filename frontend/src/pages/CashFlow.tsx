@@ -29,7 +29,7 @@ export function CashFlow() {
   const { data, isLoading } = useCashflows();
   const invalidateQueries = useInvalidateQueries();
   const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -63,7 +63,6 @@ export function CashFlow() {
     date: form.date,
     deposit: Number(form.deposit || 0),
     withdrawal: Number(form.withdrawal || 0),
-    is_principal: false,
   });
 
   const resetForm = () => {
@@ -80,7 +79,7 @@ export function CashFlow() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (id: number) => api.put(`/cashflow/${id}`, buildPayload()),
+    mutationFn: async (id: string) => api.put(`/cashflow/${id}`, buildPayload()),
     onSuccess: () => {
       resetForm();
       invalidateCashflow();
@@ -88,7 +87,7 @@ export function CashFlow() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => api.delete(`/cashflow/${id}`),
+    mutationFn: async (id: string) => api.delete(`/cashflow/${id}`),
     onSuccess: invalidateCashflow,
   });
 

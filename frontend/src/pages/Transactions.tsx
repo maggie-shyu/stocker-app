@@ -1,4 +1,4 @@
-import { Copy, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
+import { Copy, NotebookPen, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -8,7 +8,7 @@ import type { Transaction } from "../api/types";
 import { SortableHeader } from "../components/shared/SortableHeader";
 import { sortItems } from "../components/shared/sort";
 import { Badge, Button, Card, DataTableShell, EmptyState, Field, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
-import { money } from "../components/shared/format";
+import { money, price } from "../components/shared/format";
 import { useTransactions } from "../hooks/queries";
 
 const EMPTY_FORM = {
@@ -37,8 +37,26 @@ function txToForm(tx: Transaction) {
   };
 }
 
-function signedTradeAmount(tx: Transaction) {
-  return tx.action === "買" ? -tx.amount : tx.amount;
+function tradeShares(tx: Transaction) {
+  return tx.buy_shares ?? tx.sell_shares ?? 0;
+}
+
+function tradePrice(tx: Transaction) {
+  return tx.buy_price ?? tx.sell_price ?? 0;
+}
+
+function signedCashflow(tx: Transaction) {
+  if (tx.action === "買") return -tx.expense;
+  return tx.income;
+}
+
+function tradeFeeBreakdown(tx: Transaction) {
+  const discountedFee = tx.discounted_fee ?? 0;
+  const tax = tx.tax ?? 0;
+  const parts = [];
+  if (discountedFee > 0) parts.push(`手續費 ${money(discountedFee)}`);
+  if (tax > 0) parts.push(`稅金 ${money(tax)}`);
+  return parts.join(" · ");
 }
 
 function signedMoney(value: number) {
@@ -61,7 +79,7 @@ export function Transactions() {
   const invalidateQueries = useInvalidateQueries();
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -77,7 +95,8 @@ export function Transactions() {
     const items = data?.items ?? [];
     return sortItems(items, (tx) => {
       if (sortKey === "shares") return tx.buy_shares ?? tx.sell_shares ?? 0;
-      if (sortKey === "amount") return signedTradeAmount(tx);
+      if (sortKey === "price") return tradePrice(tx);
+      if (sortKey === "cashflow") return signedCashflow(tx);
       return (tx as unknown as Record<string, string | number>)[sortKey] ?? "";
     }, sortDir);
   }, [data, sortKey, sortDir]);
@@ -86,65 +105,110 @@ export function Transactions() {
     const items = data?.items ?? [];
     return {
       count: items.length,
-      amount: items.reduce((sum, tx) => sum + signedTradeAmount(tx), 0),
+      amount: items.reduce((sum, tx) => sum + signedCashflow(tx), 0),
     };
   }, [data]);
 
   const [suggestions, setSuggestions] = useState<{ code: string; name: string }[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const comboboxRef = useRef<HTMLDivElement>(null);
+  const [activeSuggestionField, setActiveSuggestionField] = useState<"code" | "name" | null>(null);
+  const stockFieldsRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const latestSearchRequestId = useRef(0);
+  const formRef = useRef(form);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) setShowSuggestions(false);
+      if (stockFieldsRef.current && !stockFieldsRef.current.contains(e.target as Node)) {
+        setActiveSuggestionField(null);
+      }
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const fetchSuggestions = useCallback((query: string) => {
+  const fetchSuggestions = useCallback((query: string, field: "code" | "name") => {
     clearTimeout(searchTimer.current);
-    if (!query.trim()) {
+    latestSearchRequestId.current += 1;
+    const requestId = latestSearchRequestId.current;
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
       setSuggestions([]);
-      setShowSuggestions(false);
+      setActiveSuggestionField(null);
       return;
     }
+
     searchTimer.current = setTimeout(async () => {
       const res = await api.get<{ code: string; name: string }[]>("/stocks/search", { params: { q: query } });
+      const currentValue = (
+        field === "code" ? formRef.current.code : formRef.current.name
+      ).trim().toLowerCase();
+
+      if (requestId !== latestSearchRequestId.current || currentValue !== normalizedQuery) {
+        return;
+      }
+
+      const exactMatches = res.data.filter((stock) => {
+        const target = field === "code" ? stock.code : stock.name;
+        return target.trim().toLowerCase() === normalizedQuery;
+      });
+
+      if (exactMatches.length === 1) {
+        const [exact] = exactMatches;
+        setForm((f) => ({
+          ...f,
+          code: exact.code,
+          name: exact.name,
+        }));
+        setSuggestions([]);
+        setActiveSuggestionField(null);
+        return;
+      }
+
+      setForm((f) => ({
+        ...f,
+        ...(field === "code" ? { name: "" } : { code: "" }),
+      }));
       setSuggestions(res.data);
-      setShowSuggestions(res.data.length > 0);
+      setActiveSuggestionField(res.data.length > 0 ? field : null);
     }, 200);
   }, []);
 
   const handleNameChange = (value: string) => {
     setForm((f) => ({ ...f, name: value }));
-    fetchSuggestions(value);
+    fetchSuggestions(value, "name");
   };
 
-  const handleCodeChange = useCallback(async (value: string) => {
+  const handleCodeChange = useCallback((value: string) => {
     setForm((f) => ({ ...f, code: value }));
-    if (!value.trim()) return;
-    const res = await api.get<{ code: string; name: string }[]>("/stocks/search", { params: { q: value } });
-    const exact = res.data.find((s) => s.code === value);
-    if (exact) setForm((f) => ({ ...f, name: exact.name }));
-  }, []);
+    fetchSuggestions(value, "code");
+  }, [fetchSuggestions]);
 
   const selectStock = (stock: { code: string; name: string }) => {
     setForm((f) => ({ ...f, code: stock.code, name: stock.name }));
-    setShowSuggestions(false);
+    setSuggestions([]);
+    setActiveSuggestionField(null);
   };
 
   const amount = useMemo(() => {
     if (form.action === "股利") return Number(form.dividend_income || 0);
     return Number(form.shares || 0) * Number(form.price || 0);
   }, [form.action, form.dividend_income, form.price, form.shares]);
+  const shares = useMemo(() => Number(form.shares || 0), [form.shares]);
 
   const preview = useQuery({
-    queryKey: ["fee-preview", form.action, form.trade_type, amount],
+    queryKey: ["fee-preview", form.action, form.code, form.trade_type, shares, amount],
     enabled: amount > 0,
     queryFn: async () =>
-      (await api.get("/stocks/preview-fee", { params: { action: form.action, trade_type: form.trade_type, amount } })).data,
+      (
+        await api.get("/stocks/preview-fee", {
+          params: { action: form.action, code: form.code, trade_type: form.trade_type, shares, amount },
+        })
+      ).data,
   });
 
   const invalidateAll = () => {
@@ -183,7 +247,7 @@ export function Transactions() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/transactions/${id}`, buildPayload()),
+    mutationFn: (id: string) => api.put(`/transactions/${id}`, buildPayload()),
     onSuccess: () => {
       resetForm();
       invalidateAll();
@@ -191,7 +255,7 @@ export function Transactions() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/transactions/${id}`),
+    mutationFn: (id: string) => api.delete(`/transactions/${id}`),
     onSuccess: invalidateAll,
   });
 
@@ -232,7 +296,7 @@ export function Transactions() {
         }
       />
 
-      <Card>
+      <Card className="relative z-40">
         <form id="transaction-form" onSubmit={submit} className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
@@ -258,24 +322,48 @@ export function Transactions() {
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-6">
+          <div ref={stockFieldsRef} className="relative z-30 grid gap-3 lg:grid-cols-6">
             <Field label="日期" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            <Field label="代號" placeholder="代號" value={form.code} onChange={(e) => handleCodeChange(e.target.value)} required />
-            <div ref={comboboxRef} className="relative space-y-1.5">
+            <div className="relative space-y-1.5">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted">代號</span>
+              <input
+                className={INPUT}
+                placeholder="代號"
+                value={form.code}
+                onChange={(e) => handleCodeChange(e.target.value)}
+                onFocus={() => form.code && suggestions.length > 0 && setActiveSuggestionField("code")}
+                required
+              />
+              {activeSuggestionField === "code" ? (
+                <ul className="absolute left-0 top-full z-50 mt-1 max-h-52 w-64 overflow-y-auto rounded-xl border border-line bg-white shadow-lg">
+                  {suggestions.map((s) => (
+                    <li
+                      key={`${s.code}-${s.name}-code`}
+                      onMouseDown={() => selectStock(s)}
+                      className="cursor-pointer px-3 py-2 text-sm hover:bg-teal-50"
+                    >
+                      <span className="font-mono text-muted">{s.code}</span>
+                      <span className="ml-2">{s.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div className="relative space-y-1.5">
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted">股票名稱</span>
               <input
                 className={INPUT}
                 placeholder="股票"
                 value={form.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                onFocus={() => form.name && setShowSuggestions(suggestions.length > 0)}
+                onFocus={() => form.name && suggestions.length > 0 && setActiveSuggestionField("name")}
                 required
               />
-              {showSuggestions ? (
-                <ul className="absolute left-0 top-full z-20 mt-1 max-h-52 w-64 overflow-y-auto rounded-xl border border-line bg-white shadow-lg">
+              {activeSuggestionField === "name" ? (
+                <ul className="absolute left-0 top-full z-50 mt-1 max-h-52 w-64 overflow-y-auto rounded-xl border border-line bg-white shadow-lg">
                   {suggestions.map((s) => (
                     <li
-                      key={s.code}
+                      key={`${s.code}-${s.name}-name`}
                       onMouseDown={() => selectStock(s)}
                       className="cursor-pointer px-3 py-2 text-sm hover:bg-teal-50"
                     >
@@ -322,12 +410,25 @@ export function Transactions() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={tx.action === "買" ? "accent" : tx.action === "賣" ? "warn" : "good"}>{tx.action}</Badge>
-                  <span className="font-bold">{tx.code} {tx.name}</span>
+                  <span className="inline-flex items-start gap-1 font-bold">
+                    <span>{tx.code} {tx.name}</span>
+                    {tx.reason ? (
+                      <span className="group/note relative mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-muted">
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted">
+                          <NotebookPen className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="pointer-events-none absolute right-0 top-0 z-20 w-72 -translate-y-[calc(100%+0.4rem)] rounded-xl border border-line bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-ink opacity-0 shadow-soft transition group-hover/note:opacity-100">
+                          {tx.reason}
+                        </span>
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
                 <p className="mt-2 text-sm text-muted">{tx.date} · {tx.buy_shares ?? tx.sell_shares ?? "-"} 股</p>
-                {tx.reason ? <p className="mt-2 line-clamp-2 text-sm text-muted">{tx.reason}</p> : null}
+                {tx.action !== "股利" ? <p className="mt-1 text-sm text-muted">股價 {price(tradePrice(tx))}</p> : null}
+                {tradeFeeBreakdown(tx) ? <p className="mt-1 text-sm text-muted">{tradeFeeBreakdown(tx)}</p> : null}
               </div>
-              <div className="text-right font-bold">{money(tx.amount)}</div>
+              <div className={`text-right font-bold ${signedAmountClass(signedCashflow(tx))}`}>{signedMoney(signedCashflow(tx))}</div>
             </div>
             <div className="mt-3 flex justify-end gap-1">
               <Button type="button" tone="ghost" title="編輯" onClick={() => handleEdit(tx)}><Pencil className="h-4 w-4" /></Button>
@@ -340,35 +441,48 @@ export function Transactions() {
         )}
       </div>
 
-      <DataTableShell className="hidden lg:block">
+      <DataTableShell className="relative z-0 hidden overflow-visible lg:block" scrollClassName="overflow-x-auto overflow-y-visible">
         <table className="w-full min-w-[50rem] table-fixed text-left text-sm">
           <colgroup>
-            <col className="w-[5.333rem]" />
-            <col className="w-[5.5rem]" />
-            <col className="w-[3.333rem]" />
-            <col className="w-[5.333rem]" />
-            <col className="w-[7.875rem]" />
+            <col className="w-[4rem]" />
+            <col className="w-[7rem]" />
+            <col className="w-[3rem]" />
+            <col className="w-[4rem]" />
+            <col className="w-[5rem]" />
           </colgroup>
           <thead className="bg-white/55 text-xs uppercase">
             <tr>
               <SortableHeader label="日期" sortKey="date" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95" />
               <SortableHeader label="股票" sortKey="code" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95" />
               <SortableHeader label="股數" sortKey="shares" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
-              <SortableHeader label="成交價" sortKey="amount" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
-              <SortableHeader label="原因" sortKey="reason" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95" />
+              <SortableHeader label="股價" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
+              <SortableHeader label="收支" sortKey="cashflow" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {sortedItems.map((tx) => (
               <tr key={tx.id} className={`group ${editingId === tx.id ? "bg-teal-50/70" : "bg-panel/70 hover:bg-white/75"}`}>
                 <td className="px-4 py-3 text-muted">{tx.date}</td>
-                <td className="whitespace-normal break-words px-4 py-3 leading-5">{tx.code} {tx.name}</td>
-                <td className="px-4 py-3 text-right">{tx.buy_shares ?? tx.sell_shares ?? "-"}</td>
-                <td className={`px-4 py-3 text-right font-semibold ${signedAmountClass(signedTradeAmount(tx))}`}>
-                  {signedMoney(signedTradeAmount(tx))}
+                <td className="relative whitespace-normal break-words px-4 py-3 leading-5">
+                  <div className="inline-flex items-start gap-1">
+                    <span>{tx.code} {tx.name}</span>
+                    {tx.reason ? (
+                      <div className="group/note relative mt-0.5">
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted transition hover:text-ink">
+                          <NotebookPen className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="pointer-events-none absolute right-0 top-0 z-50 w-40 -translate-y-[calc(100%+0.45rem)] rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium leading-5 text-ink opacity-0 shadow-soft transition group-hover/note:opacity-100">
+                          {tx.reason}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </td>
-                <td className="relative whitespace-normal break-words px-4 py-3 leading-5 text-muted">
-                  {tx.reason ?? ""}
+                <td className="px-4 py-3 text-right">{tradeShares(tx) || "-"}</td>
+                <td className="px-4 py-3 text-right">{tradePrice(tx) ? price(tradePrice(tx)) : "-"}</td>
+                <td className={`relative px-4 py-3 text-right font-semibold ${signedAmountClass(signedCashflow(tx))}`}>
+                  <div>{signedMoney(signedCashflow(tx))}</div>
+                  {tradeFeeBreakdown(tx) ? <div className="mt-1 text-xs font-normal text-muted">{tradeFeeBreakdown(tx)}</div> : null}
                   <div className="pointer-events-none absolute right-4 top-1/2 z-20 flex -translate-y-1/2 justify-start">
                     <div className="pointer-events-auto inline-flex translate-y-1 items-center overflow-hidden rounded-2xl border border-line bg-white/95 opacity-0 shadow-soft transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
                       <button
@@ -408,8 +522,8 @@ export function Transactions() {
               <td className="px-4 py-2">{stats.count} 筆</td>
               <td className="px-4 py-2" />
               <td className="px-4 py-2" />
-              <td className={`px-4 py-2 text-right ${signedAmountClass(stats.amount)}`}>{signedMoney(stats.amount)}</td>
               <td className="px-4 py-2" />
+              <td className={`px-4 py-2 text-right ${signedAmountClass(stats.amount)}`}>{signedMoney(stats.amount)}</td>
             </tr>
           </tfoot>
         </table>

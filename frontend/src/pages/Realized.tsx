@@ -1,4 +1,4 @@
-import { Activity, BadgeDollarSign, Trophy } from "lucide-react";
+import { Activity, BadgeDollarSign, Coins, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -6,17 +6,18 @@ import { MetricCard } from "../components/shared/MetricCard";
 import { SortableHeader } from "../components/shared/SortableHeader";
 import { sortItems } from "../components/shared/sort";
 import { Badge, Card, DataTableShell, EmptyState, PageHeader, SkeletonBlock } from "../components/shared/UI";
-import { money, percent, signedClass } from "../components/shared/format";
+import { money, percent, price, signedClass } from "../components/shared/format";
 import { useRealized } from "../hooks/queries";
 
 type RealizedStockRow = {
   code: string;
   name: string;
   shares: number;
+  avg_sell_price: number;
   avg_buy_price: number;
-  expense: number;
-  income: number;
-  realized_pnl: number;
+  capital_gain: number;
+  dividend_income: number;
+  realized_profit: number;
   realized_pnl_rate: number;
 };
 
@@ -29,7 +30,7 @@ function formatYAxisK(value: number) {
 
 export function Realized() {
   const { data, isLoading } = useRealized();
-  const [sortKey, setSortKey] = useState("realized_pnl");
+  const [sortKey, setSortKey] = useState("realized_profit");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const handleSort = (key: string) => {
@@ -47,30 +48,54 @@ export function Realized() {
       const current = grouped.get(item.code);
       if (current) {
         current.shares += item.shares;
-        current.expense += item.cost_basis;
-        current.income += item.income;
-        current.realized_pnl += item.realized_pnl;
+        current.avg_sell_price += item.avg_sell_price * item.shares;
+        current.avg_buy_price += item.avg_buy_price * item.shares;
+        current.capital_gain += item.realized_pnl;
       } else {
         grouped.set(item.code, {
           code: item.code,
           name: item.name,
           shares: item.shares,
+          avg_sell_price: item.avg_sell_price * item.shares,
+          avg_buy_price: item.avg_buy_price * item.shares,
+          capital_gain: item.realized_pnl,
+          dividend_income: 0,
+          realized_profit: 0,
+          realized_pnl_rate: 0,
+        });
+      }
+    }
+
+    for (const item of data?.dividend_by_stock ?? []) {
+      const current = grouped.get(item.code);
+      if (current) {
+        current.dividend_income += item.dividend_income;
+      } else {
+        grouped.set(item.code, {
+          code: item.code,
+          name: item.name,
+          shares: 0,
+          avg_sell_price: 0,
           avg_buy_price: 0,
-          expense: item.cost_basis,
-          income: item.income,
-          realized_pnl: item.realized_pnl,
+          capital_gain: 0,
+          dividend_income: item.dividend_income,
+          realized_profit: item.dividend_income,
           realized_pnl_rate: 0,
         });
       }
     }
 
     return Array.from(grouped.values()).map((item) => {
-      const avgBuyPrice = item.shares ? item.expense / item.shares : 0;
-      const realizedPnlRate = item.expense ? item.realized_pnl / item.expense : 0;
+      const avgSellPrice = item.shares ? item.avg_sell_price / item.shares : 0;
+      const avgBuyPrice = item.shares ? item.avg_buy_price / item.shares : 0;
+      const realizedProfit = item.capital_gain + item.dividend_income;
+      const realizedPnlRate = item.avg_buy_price ? realizedProfit / item.avg_buy_price : 0;
 
       return {
         ...item,
+        avg_sell_price: avgSellPrice,
         avg_buy_price: avgBuyPrice,
+        realized_profit: realizedProfit,
         realized_pnl_rate: realizedPnlRate,
       };
     });
@@ -88,15 +113,16 @@ export function Realized() {
   const summaryRow = useMemo(() => {
     if (!stockItems.length) return null;
 
-    const totalExpense = stockItems.reduce((sum, item) => sum + item.expense, 0);
-    const totalIncome = stockItems.reduce((sum, item) => sum + item.income, 0);
-    const avgRealizedPnl = stockItems.reduce((sum, item) => sum + item.realized_pnl, 0) / stockItems.length;
+    const totalCapitalGain = stockItems.reduce((sum, item) => sum + item.capital_gain, 0);
+    const totalDividendIncome = stockItems.reduce((sum, item) => sum + item.dividend_income, 0);
+    const avgRealizedPnl = stockItems.reduce((sum, item) => sum + item.realized_profit, 0) / stockItems.length;
     const avgRealizedPnlRate = stockItems.reduce((sum, item) => sum + item.realized_pnl_rate, 0) / stockItems.length;
 
     return {
       count: stockItems.length,
-      totalExpense,
-      totalIncome,
+      totalCapitalGain,
+      totalDividendIncome,
+      totalRealizedProfit: totalCapitalGain + totalDividendIncome,
       avgRealizedPnl,
       avgRealizedPnlRate,
     };
@@ -104,6 +130,7 @@ export function Realized() {
 
   if (isLoading) return <SkeletonBlock label="載入已實現損益中..." />;
   if (!data) return <EmptyState title="沒有已實現損益資料" />;
+  const capitalGainRate = data.total_realized_pnl ? ((summaryRow?.totalCapitalGain ?? 0) / data.total_realized_pnl) : 0;
 
   return (
     <section className="space-y-5">
@@ -115,7 +142,8 @@ export function Realized() {
 
       <div className="metric-grid grid gap-4">
         <MetricCard icon={Trophy} label="勝率" value={data.win_rate * 100} hint="%" description="獲利筆數比例" />
-        <MetricCard icon={Activity} label="已實現損益" value={data.total_realized_pnl} hint={percent(data.realized_pnl_rate)} description="已實現損益 ÷ 本金" tone="signed" />
+        <MetricCard icon={Activity} label="已實現收益" value={data.total_realized_pnl} hint={percent(data.realized_pnl_rate)} description="(資本利得 + 股息收入) ÷ 本金" tone="signed" />
+        <MetricCard icon={Coins} label="資本利得" value={summaryRow?.totalCapitalGain ?? 0} hint={percent(capitalGainRate)} description="資本利得 ÷ 已實現損益" tone="signed" />
         <MetricCard icon={BadgeDollarSign} label="股利收入" value={data.dividend_income} hint={percent(data.dividend_realized_pnl_rate)} description="股利 ÷ 已實現損益" />
       </div>
 
@@ -133,10 +161,10 @@ export function Realized() {
               <BarChart data={sortedItems.slice(0, 18)} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
                 <XAxis dataKey="code" />
                 <YAxis width={56} tickFormatter={formatYAxisK} />
-                <Tooltip formatter={(value: number) => [money(value), "已實現損益"]} />
-                <Bar dataKey="realized_pnl" name="已實現損益" radius={[6, 6, 0, 0]}>
+                <Tooltip formatter={(value: number) => [money(value), "已實現收益"]} />
+                <Bar dataKey="realized_profit" name="已實現收益" radius={[6, 6, 0, 0]}>
                   {sortedItems.slice(0, 18).map((entry) => (
-                    <Cell key={entry.code} fill={entry.realized_pnl >= 0 ? "#9f1239" : "#047857"} />
+                    <Cell key={entry.code} fill={entry.realized_profit >= 0 ? "#9f1239" : "#047857"} />
                   ))}
                 </Bar>
               </BarChart>
@@ -153,21 +181,21 @@ export function Realized() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-bold">{item.code} {item.name}</div>
-                <p className="mt-1 text-sm text-muted">買入均價 {money(item.avg_buy_price)}</p>
+                <p className="mt-1 text-sm text-muted">賣均 {price(item.avg_sell_price)} · 買均 {price(item.avg_buy_price)}</p>
               </div>
-              <div className={`text-right font-bold ${signedClass(item.realized_pnl)}`}>
-                {money(item.realized_pnl)}
+              <div className={`text-right font-bold ${signedClass(item.realized_profit)}`}>
+                {money(item.realized_profit)}
                 <div className="text-xs">{percent(item.realized_pnl_rate)}</div>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-muted">支出</div>
-                <div className="mt-1 font-semibold text-ink">{money(item.expense)}</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-muted">資本利得</div>
+                <div className={`mt-1 font-semibold ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</div>
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-muted">收入</div>
-                <div className="mt-1 font-semibold text-ink">{money(item.income)}</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-muted">股息收入</div>
+                <div className={`mt-1 font-semibold ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</div>
               </div>
             </div>
           </article>
@@ -181,15 +209,15 @@ export function Realized() {
                 <div className="mt-1 font-semibold text-ink">{summaryRow.count}</div>
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-muted">支出</div>
-                <div className="mt-1 font-semibold text-ink">{money(summaryRow.totalExpense)}</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-muted">資本利得</div>
+                <div className={`mt-1 font-semibold ${signedClass(summaryRow.totalCapitalGain)}`}>{money(summaryRow.totalCapitalGain)}</div>
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-muted">收入</div>
-                <div className="mt-1 font-semibold text-ink">{money(summaryRow.totalIncome)}</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-muted">股息收入</div>
+                <div className={`mt-1 font-semibold ${signedClass(summaryRow.totalDividendIncome)}`}>{money(summaryRow.totalDividendIncome)}</div>
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-muted">已實現損益平均</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-muted">已實現收益平均</div>
                 <div className={`mt-1 font-semibold ${signedClass(summaryRow.avgRealizedPnl)}`}>{money(summaryRow.avgRealizedPnl)}</div>
               </div>
               <div>
@@ -206,10 +234,11 @@ export function Realized() {
           <thead className="bg-white/55 text-xs uppercase">
             <tr>
               <SortableHeader label="股票" sortKey="stock" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
-              <SortableHeader label="買入均價" sortKey="avg_buy_price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHeader label="支出" sortKey="expense" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHeader label="收入" sortKey="income" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHeader label="已實現損益" sortKey="realized_pnl" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
+              <SortableHeader label="賣均" sortKey="avg_sell_price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
+              <SortableHeader label="買均" sortKey="avg_buy_price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
+              <SortableHeader label="資本利得" sortKey="capital_gain" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
+              <SortableHeader label="股息收入" sortKey="dividend_income" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
+              <SortableHeader label="已實現收益" sortKey="realized_profit" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
               <SortableHeader label="報酬率" sortKey="realized_pnl_rate" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="text-right" />
             </tr>
           </thead>
@@ -217,10 +246,11 @@ export function Realized() {
             {sortedItems.map((item) => (
               <tr key={item.code} className="bg-panel/70 hover:bg-white/75">
                 <td className="px-4 py-3">{item.code} {item.name}</td>
-                <td className="px-4 py-3 text-right">{money(item.avg_buy_price)}</td>
-                <td className="px-4 py-3 text-right">{money(item.expense)}</td>
-                <td className="px-4 py-3 text-right">{money(item.income)}</td>
-                <td className={`px-4 py-3 text-right font-semibold ${signedClass(item.realized_pnl)}`}>{money(item.realized_pnl)}</td>
+                <td className="px-4 py-3 text-right">{price(item.avg_sell_price)}</td>
+                <td className="px-4 py-3 text-right">{price(item.avg_buy_price)}</td>
+                <td className={`px-4 py-3 text-right ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</td>
+                <td className={`px-4 py-3 text-right ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</td>
+                <td className={`px-4 py-3 text-right font-semibold ${signedClass(item.realized_profit)}`}>{money(item.realized_profit)}</td>
                 <td className={`px-4 py-3 text-right ${signedClass(item.realized_pnl_rate)}`}>{percent(item.realized_pnl_rate)}</td>
               </tr>
             ))}
@@ -232,8 +262,9 @@ export function Realized() {
                 <td className="px-4 py-2" />
                 <td className="px-4 py-2" />
                 <td className="px-4 py-2" />
-                <td className={`px-4 py-2 text-right ${signedClass(summaryRow.avgRealizedPnl)}`}>{money(summaryRow.avgRealizedPnl)}</td>
-                <td className={`px-4 py-2 text-right ${signedClass(summaryRow.avgRealizedPnlRate)}`}>{percent(summaryRow.avgRealizedPnlRate)}</td>
+                <td className="px-4 py-2" />
+                <td className={`px-4 py-2 text-right ${signedClass(summaryRow.totalRealizedProfit)}`}>{money(summaryRow.totalRealizedProfit)}</td>
+                <td className="px-4 py-2" />
               </tr>
             </tfoot>
           ) : null}

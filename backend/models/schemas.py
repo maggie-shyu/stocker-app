@@ -26,7 +26,7 @@ class TradeFinancials(BaseModel):
 
 
 class TransactionRecord(BaseModel):
-    id: int
+    id: str
     date: date
     action: Action
     code: str
@@ -70,18 +70,16 @@ class TransactionPage(BaseModel):
 
 
 class CashflowRecord(BaseModel):
-    id: int
+    id: str
     date: date
     deposit: float = 0
     withdrawal: float = 0
-    principal_snapshot: float | None = None
 
 
 class CashflowCreate(BaseModel):
     date: date
     deposit: float = 0
     withdrawal: float = 0
-    is_principal: bool = False
 
 
 class CommissionSettings(BaseModel):
@@ -131,6 +129,8 @@ class RealizedTrade(BaseModel):
     code: str
     name: str
     shares: float
+    avg_buy_price: float = 0
+    avg_sell_price: float = 0
     income: float
     cost_basis: float
     realized_pnl: float
@@ -138,8 +138,15 @@ class RealizedTrade(BaseModel):
     reason: str | None = None
 
 
+class DividendIncomeByStock(BaseModel):
+    code: str
+    name: str
+    dividend_income: float
+
+
 class RealizedResponse(BaseModel):
     items: list[RealizedTrade]
+    dividend_by_stock: list[DividendIncomeByStock]
     total_realized_pnl: float
     dividend_income: float
     invested_capital: float

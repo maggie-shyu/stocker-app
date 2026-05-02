@@ -1,5 +1,5 @@
 export type Transaction = {
-  id: number;
+  id: string;
   date: string;
   action: "買" | "賣" | "股利";
   code: string;
@@ -10,6 +10,9 @@ export type Transaction = {
   sell_shares?: number | null;
   sell_price?: number | null;
   current_price: number;
+  raw_fee?: number;
+  discounted_fee?: number;
+  tax?: number;
   amount: number;
   expense: number;
   income: number;
@@ -80,14 +83,23 @@ export type RealizedTrade = {
   code: string;
   name: string;
   shares: number;
+  avg_buy_price: number;
+  avg_sell_price: number;
   income: number;
   cost_basis: number;
   realized_pnl: number;
   realized_pnl_rate: number;
 };
 
+export type DividendIncomeByStock = {
+  code: string;
+  name: string;
+  dividend_income: number;
+};
+
 export type RealizedResponse = {
   items: RealizedTrade[];
+  dividend_by_stock: DividendIncomeByStock[];
   total_realized_pnl: number;
   dividend_income: number;
   invested_capital: number;
@@ -99,11 +111,10 @@ export type RealizedResponse = {
 };
 
 export type Cashflow = {
-  id: number;
+  id: string;
   date: string;
   deposit: number;
   withdrawal: number;
-  principal_snapshot?: number | null;
 };
 
 export type CommissionSettings = {

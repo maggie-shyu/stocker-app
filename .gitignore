@@ -5,6 +5,8 @@
 .docs/
 .claude/
 backend/data/**/
+backend/.env
+frontend/.env
 
 ### Linux ###
 *~

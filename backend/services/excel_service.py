@@ -114,6 +114,7 @@ class ExcelService:
         financials = calculate_trade_financials(
             action=payload.action,
             trade_type=payload.trade_type,
+            code=payload.code,
             shares=shares,
             price=price,
             amount=payload.dividend_income if payload.action == "股利" else None,
@@ -171,7 +172,6 @@ class ExcelService:
                     date=self._date(row[0]),
                     deposit=self._float(row[1]),
                     withdrawal=self._float(row[2]),
-                    principal_snapshot=self._optional_float(row[3]),
                 )
             )
         return rows
@@ -181,19 +181,7 @@ class ExcelService:
             wb = self._load(data_only=False)
             ws = wb["出入金"]
             row_idx = self._first_empty_row(ws, start=2)
-            principal = None
-            if payload.is_principal:
-                current = self.read_cashflows()
-                principal = (
-                    sum(item.deposit for item in current)
-                    - sum(item.withdrawal for item in current)
-                    + payload.deposit
-                    - payload.withdrawal
-                )
-            for col, value in enumerate(
-                [payload.date, payload.deposit, payload.withdrawal, principal],
-                start=1,
-            ):
+            for col, value in enumerate([payload.date, payload.deposit, payload.withdrawal], start=1):
                 ws.cell(row=row_idx, column=col, value=value)
             wb.save(self.workbook_path)
         return CashflowRecord(
@@ -201,7 +189,6 @@ class ExcelService:
             date=payload.date,
             deposit=payload.deposit,
             withdrawal=payload.withdrawal,
-            principal_snapshot=principal,
         )
 
     def get_commission_discount_rate(self) -> float:

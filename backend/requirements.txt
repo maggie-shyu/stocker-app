@@ -6,3 +6,7 @@ pydantic
 cachetools
 python-multipart
 pytest
+supabase
+python-jose[cryptography]
+python-dotenv
+PyJWT

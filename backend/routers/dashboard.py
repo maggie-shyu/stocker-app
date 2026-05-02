@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 
 from models.schemas import AccountOverviewHolding, DashboardResponse, PriceStatus
-from routers.deps import get_csv_service, get_price_service
+from routers.deps import get_price_service, get_supabase_service
 from services.calculator import compute_portfolio
-from services.csv_service import CsvService
 from services.price_service import PriceService
+from services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardResponse)
 async def read_dashboard(
-    service: CsvService = Depends(get_csv_service),
+    service: SupabaseService = Depends(get_supabase_service),
     prices: PriceService = Depends(get_price_service),
 ):
     transactions = service.read_transactions()

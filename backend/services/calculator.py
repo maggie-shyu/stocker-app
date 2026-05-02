@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from models.schemas import (
+    DividendIncomeByStock,
     Holding,
     HoldingLot,
     PortfolioSnapshot,
@@ -24,6 +25,7 @@ class Lot:
     date: date
     shares: float
     cost_per_share: float
+    price_per_share: float
 
     @property
     def cost_basis(self) -> float:
@@ -32,6 +34,18 @@ class Lot:
 
 def _to_float(value: float | None) -> float:
     return float(value or 0)
+
+
+def _is_taiwan_etf_code(code: str | None) -> bool:
+    normalized = (code or "").strip()
+    return normalized.startswith("00")
+
+
+def _is_odd_lot(shares: float | None) -> bool:
+    if shares is None:
+        return False
+    remainder = abs(float(shares)) % 1000
+    return remainder > 1e-9 and abs(remainder - 1000) > 1e-9
 
 
 def _resolve_trade_shares(tx: TransactionRecord) -> float:
@@ -51,26 +65,29 @@ def _build_visible_lots(raw_lots: deque[Lot]) -> list[HoldingLot]:
     ]
 
 
-def _sell_lots(lots: deque[Lot], shares_to_sell: float) -> float:
+def _sell_lots(lots: deque[Lot], shares_to_sell: float) -> tuple[float, float]:
     consumed_cost = 0.0
+    consumed_buy_amount = 0.0
     remaining = shares_to_sell
 
     while remaining > 0 and lots:
         lot = lots[0]
         taken_shares = min(remaining, lot.shares)
         consumed_cost += taken_shares * lot.cost_per_share
+        consumed_buy_amount += taken_shares * lot.price_per_share
         lot.shares -= taken_shares
         remaining -= taken_shares
         if lot.shares <= 1e-9:
             lots.popleft()
 
-    return consumed_cost
+    return consumed_cost, consumed_buy_amount
 
 
 def calculate_trade_financials(
     *,
     action: str,
     trade_type: str,
+    code: str | None = None,
     shares: float | None = None,
     price: float | None = None,
     amount: float | None = None,
@@ -91,9 +108,13 @@ def calculate_trade_financials(
         )
 
     raw_fee = amount * 0.001425
-    discounted_fee = max(raw_fee * discount_rate, 20) if amount > 0 else 0
+    minimum_fee = 1 if _is_odd_lot(shares) else 20
+    discounted_fee = max(raw_fee * discount_rate, minimum_fee) if amount > 0 else 0
     if action == "賣":
-        tax_rate = 0.0015 if trade_type == "當沖" else 0.003
+        if _is_taiwan_etf_code(code):
+            tax_rate = 0.001
+        else:
+            tax_rate = 0.0015 if trade_type == "當沖" else 0.003
         tax = amount * tax_rate
         income = amount - discounted_fee - tax
         expense = 0
@@ -142,11 +163,12 @@ def compute_portfolio(
                     date=tx.date,
                     shares=shares,
                     cost_per_share=_to_float(tx.expense) / shares,
+                    price_per_share=_to_float(tx.buy_price),
                 )
             )
         elif tx.action == "賣":
             shares_to_sell = _resolve_trade_shares(tx)
-            consumed_cost = _sell_lots(lots_by_code[tx.code], shares_to_sell)
+            consumed_cost, consumed_buy_amount = _sell_lots(lots_by_code[tx.code], shares_to_sell)
             pnl = _to_float(tx.income) - consumed_cost
             realized_trades.append(
                 RealizedTrade(
@@ -154,6 +176,8 @@ def compute_portfolio(
                     code=tx.code,
                     name=tx.name,
                     shares=shares_to_sell,
+                    avg_buy_price=_money(consumed_buy_amount / shares_to_sell) if shares_to_sell else 0,
+                    avg_sell_price=_money(_to_float(tx.sell_price)),
                     income=_to_float(tx.income),
                     cost_basis=_money(consumed_cost),
                     realized_pnl=_money(pnl),
@@ -246,13 +270,18 @@ def compute_portfolio(
     )
 
 
-def summarize_realized(items: list[RealizedTrade], dividend_income: float = 0) -> RealizedResponse:
+def summarize_realized(
+    items: list[RealizedTrade],
+    dividend_income: float = 0,
+    dividend_by_stock: list[DividendIncomeByStock] | None = None,
+) -> RealizedResponse:
     wins = [item.realized_pnl for item in items if item.realized_pnl > 0]
     losses = [item.realized_pnl for item in items if item.realized_pnl < 0]
     invested_capital = sum(item.cost_basis for item in items)
     total_realized_pnl = sum(item.realized_pnl for item in items) + dividend_income
     return RealizedResponse(
         items=items,
+        dividend_by_stock=dividend_by_stock or [],
         total_realized_pnl=_money(total_realized_pnl),
         dividend_income=_money(dividend_income),
         invested_capital=_money(invested_capital),

@@ -3,9 +3,9 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from models.schemas import TransactionCreate, TransactionPage, TransactionRecord
-from routers.deps import get_csv_service, get_price_service
-from services.csv_service import CsvService
+from routers.deps import get_price_service, get_supabase_service
 from services.price_service import PriceService
+from services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -19,7 +19,7 @@ def list_transactions(
     to_date: date | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    service: CsvService = Depends(get_csv_service),
+    service: SupabaseService = Depends(get_supabase_service),
 ):
     items = service.read_transactions()
     if action:
@@ -44,7 +44,7 @@ def list_transactions(
 @router.post("", response_model=TransactionRecord)
 async def create_transaction(
     payload: TransactionCreate,
-    service: CsvService = Depends(get_csv_service),
+    service: SupabaseService = Depends(get_supabase_service),
     prices: PriceService = Depends(get_price_service),
 ):
     current_price = 0.0
@@ -54,25 +54,25 @@ async def create_transaction(
     return service.append_transaction(payload, current_price=current_price)
 
 
-@router.put("/{row_id}", response_model=TransactionRecord)
+@router.put("/{tx_id}", response_model=TransactionRecord)
 async def update_transaction(
-    row_id: int,
+    tx_id: str,
     payload: TransactionCreate,
-    service: CsvService = Depends(get_csv_service),
+    service: SupabaseService = Depends(get_supabase_service),
 ):
     try:
-        return service.update_transaction(row_id, payload)
+        return service.update_transaction(tx_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Transaction not found") from exc
 
 
-@router.delete("/{row_id}", status_code=204)
+@router.delete("/{tx_id}", status_code=204)
 def delete_transaction(
-    row_id: int,
-    service: CsvService = Depends(get_csv_service),
+    tx_id: str,
+    service: SupabaseService = Depends(get_supabase_service),
 ):
     try:
-        service.delete_transaction(row_id)
+        service.delete_transaction(tx_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Transaction not found") from exc
     return None

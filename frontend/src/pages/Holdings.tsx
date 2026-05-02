@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { Holding } from "../api/types";
 import { sortItems } from "../components/shared/sort";
 import { Badge, EmptyState, PageHeader, SkeletonBlock } from "../components/shared/UI";
-import { money, percent, signedClass } from "../components/shared/format";
+import { money, percent, price, signedClass } from "../components/shared/format";
 import { useHoldings } from "../hooks/queries";
 
 const SORT_COLS = [
@@ -81,7 +81,7 @@ export function Holdings() {
                     <Badge tone="accent">{percent(holding.weight)} 配置</Badge>
                   </div>
                   <p className="mt-2 text-sm text-muted">
-                    {holding.total_shares.toLocaleString()} 股 · 均價 {money(holding.avg_cost)} · 現價 {money(holding.current_price)}
+                    {holding.total_shares.toLocaleString()} 股 · 均價 {price(holding.avg_cost)} · 現價 {price(holding.current_price)}
                   </p>
                 </div>
                 <div className="sm:text-right">

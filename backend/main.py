@@ -4,8 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from routers import cashflow, dashboard, holdings, realized, settings, stocks, transactions
-from routers.deps import get_csv_service
+from routers import cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
 
 
 settings_obj = get_settings()
@@ -13,7 +12,6 @@ settings_obj = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_csv_service().read_stocks()
     yield
 
 
@@ -39,3 +37,4 @@ app.include_router(transactions.router)
 app.include_router(holdings.router)
 app.include_router(realized.router)
 app.include_router(dashboard.router)
+app.include_router(export.router)
