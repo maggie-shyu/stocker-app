@@ -2,10 +2,10 @@ from datetime import date
 
 from fastapi import APIRouter, Depends
 
-from models.schemas import DividendIncomeByStock, RealizedResponse
-from routers.deps import get_supabase_service
-from services.calculator import compute_portfolio, summarize_realized
-from services.supabase_service import SupabaseService
+from backend.models.schemas import DividendIncomeByStock, RealizedResponse
+from backend.routers.deps import get_supabase_service
+from backend.services.calculator import compute_portfolio, summarize_realized
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/realized", tags=["realized"])

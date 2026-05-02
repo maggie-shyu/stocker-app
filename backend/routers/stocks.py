@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from models.schemas import PriceQuote, StockLookup, TradeFinancials
-from routers.deps import get_price_service, get_supabase_service
-from services.calculator import calculate_trade_financials
-from services.price_service import PriceService
-from services.supabase_service import SupabaseService
+from backend.config import get_settings
+from backend.models.schemas import PriceQuote, StockLookup, TradeFinancials
+from backend.routers.deps import get_price_service, get_supabase_service
+from backend.services.calculator import calculate_trade_financials
+from backend.services.price_service import PriceService
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
@@ -24,7 +25,14 @@ async def get_prices(
     service: SupabaseService = Depends(get_supabase_service),
     prices: PriceService = Depends(get_price_service),
 ):
-    return await prices.get_prices(codes.split(","), service.read_stocks())
+    max_codes = get_settings().price_lookup_max_codes
+    normalized_codes = list(dict.fromkeys(code.strip() for code in codes.split(",") if code.strip()))
+    if len(normalized_codes) > max_codes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A maximum of {max_codes} stock codes may be requested at once",
+        )
+    return await prices.get_prices(normalized_codes, service.read_stocks())
 
 
 @router.get("/preview-fee", response_model=TradeFinancials)

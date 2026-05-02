@@ -1,10 +1,20 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
+import sys
+
+# Support both:
+# - `uvicorn backend.main:app` from the repo root
+# - `uvicorn main:app` from inside `backend/`
+if __package__ in {None, ""}:
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import get_settings
-from routers import cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
+from backend.config import get_settings
+from backend.routers import cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
 
 
 settings_obj = get_settings()

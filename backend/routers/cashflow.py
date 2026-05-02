@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from models.schemas import CashflowCreate, CashflowRecord
-from routers.deps import get_supabase_service
-from services.supabase_service import SupabaseService
+from backend.models.schemas import CashflowCreate, CashflowRecord
+from backend.routers.deps import get_supabase_service
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/cashflow", tags=["cashflow"])

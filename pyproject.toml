@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stocker-backend"
+version = "0.1.0"
+description = "Backend API for Stocker"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "openpyxl",
+  "httpx",
+  "pydantic",
+  "cachetools",
+  "python-multipart",
+  "supabase",
+  "python-jose[cryptography]",
+  "python-dotenv",
+  "PyJWT",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-ra"

@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from models.schemas import (
+from backend.models.schemas import (
     CashflowCreate,
     CashflowRecord,
     StockLookup,
     TransactionCreate,
     TransactionRecord,
 )
-from services.calculator import calculate_trade_financials
+from backend.services.calculator import calculate_trade_financials
 
 
 class SupabaseService:

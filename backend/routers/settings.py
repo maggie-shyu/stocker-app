@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 
-from models.schemas import CommissionSettings
-from routers.deps import get_supabase_service
-from services.supabase_service import SupabaseService
+from backend.models.schemas import CommissionSettings
+from backend.routers.deps import get_supabase_service
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])

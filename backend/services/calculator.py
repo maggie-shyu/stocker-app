@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import date
 
-from models.schemas import (
+from backend.models.schemas import (
     DividendIncomeByStock,
     Holding,
     HoldingLot,

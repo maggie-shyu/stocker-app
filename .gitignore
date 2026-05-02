@@ -2,11 +2,13 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=react,python,macos,linux
 
 # Custom
-.docs/
+.codex/
 .claude/
-backend/data/**/
+.agents/
+
 backend/.env
 frontend/.env
+supabase/.temp/
 
 ### Linux ###
 *~
@@ -236,6 +238,8 @@ logs
 
 node_modules
 bower_components
+frontend/dist/
+frontend/coverage/
 
 *.sublime*
 

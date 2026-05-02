@@ -2,10 +2,10 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from models.schemas import TransactionCreate, TransactionPage, TransactionRecord
-from routers.deps import get_price_service, get_supabase_service
-from services.price_service import PriceService
-from services.supabase_service import SupabaseService
+from backend.models.schemas import TransactionCreate, TransactionPage, TransactionRecord
+from backend.routers.deps import get_price_service, get_supabase_service
+from backend.services.price_service import PriceService
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])

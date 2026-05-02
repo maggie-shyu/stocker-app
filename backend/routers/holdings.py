@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 
-from models.schemas import Holding
-from routers.deps import get_price_service, get_supabase_service
-from services.calculator import compute_portfolio
-from services.price_service import PriceService
-from services.supabase_service import SupabaseService
+from backend.models.schemas import Holding
+from backend.routers.deps import get_price_service, get_supabase_service
+from backend.services.calculator import compute_portfolio
+from backend.services.price_service import PriceService
+from backend.services.supabase_service import SupabaseService
 
 
 router = APIRouter(prefix="/api/holdings", tags=["holdings"])

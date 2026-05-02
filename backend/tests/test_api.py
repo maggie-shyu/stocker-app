@@ -1,31 +1,33 @@
 from unittest.mock import AsyncMock
 from datetime import date
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from config import get_settings
-from main import app
-from models.schemas import TransactionRecord
-from routers.deps import get_price_service
-from services.calculator import calculate_trade_financials, compute_portfolio
-from services.csv_service import CsvService
+from backend.main import app
+from backend.models.schemas import CashflowRecord, TransactionRecord
+from backend.routers.deps import get_price_service
+from backend.routers import stocks as stocks_router
+from backend.services.calculator import calculate_trade_financials, compute_portfolio
+from backend.tests.support.csv_fixture_service import CsvFixtureService
 
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
-_test_svc = CsvService(get_settings().data_dir / "tommy")
+TEST_DATA_DIR = Path(__file__).resolve().parent / "data"
+_test_svc = CsvFixtureService(TEST_DATA_DIR)
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
 def stable_discount_rate(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(CsvService, "get_commission_discount_rate", lambda self: 0.0)
-    monkeypatch.setattr(CsvService, "read_stocks", lambda self: [])
+    monkeypatch.setattr(CsvFixtureService, "get_commission_discount_rate", lambda self: 0.0)
+    monkeypatch.setattr(CsvFixtureService, "read_stocks", lambda self: [])
 
 
 @pytest.fixture(autouse=True)
 def override_auth():
-    from routers.deps import get_current_user, get_supabase_service
+    from backend.routers.deps import get_current_user, get_supabase_service
 
     app.dependency_overrides[get_current_user] = lambda: TEST_USER_ID
     app.dependency_overrides[get_supabase_service] = lambda: _test_svc
@@ -52,6 +54,25 @@ def test_transactions_endpoint_returns_paginated_rows():
     assert body["total"] == len(expected)
     assert len(body["items"]) == min(10, len(expected))
     assert body["items"][0]["code"] == expected[0].code
+
+
+def test_transactions_endpoint_applies_filters():
+    response = client.get(
+        "/api/transactions",
+        params={
+            "action": "股利",
+            "code": "6274",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-30",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["action"] == "股利"
+    assert body["items"][0]["code"] == "6274"
 
 
 def test_dashboard_endpoint_returns_kpis_and_recent_transactions():
@@ -191,3 +212,240 @@ def test_realized_endpoint_only_counts_dividends_before_last_sell(monkeypatch: p
     assert body["dividend_by_stock"] == [{"code": "2330", "name": "台積電", "dividend_income": 300}]
     assert body["items"][0]["avg_buy_price"] == pytest.approx(100)
     assert body["items"][0]["avg_sell_price"] == pytest.approx(120)
+
+
+def test_realized_endpoint_applies_code_and_date_filters(monkeypatch: pytest.MonkeyPatch):
+    txs = [
+        TransactionRecord(
+            id="1",
+            date=date(2026, 1, 1),
+            action="買",
+            code="2330",
+            name="台積電",
+            buy_shares=100,
+            buy_price=100,
+            expense=10020,
+        ),
+        TransactionRecord(
+            id="2",
+            date=date(2026, 1, 5),
+            action="賣",
+            code="2330",
+            name="台積電",
+            sell_shares=100,
+            sell_price=120,
+            income=11964,
+        ),
+        TransactionRecord(
+            id="3",
+            date=date(2026, 1, 2),
+            action="買",
+            code="2317",
+            name="鴻海",
+            buy_shares=100,
+            buy_price=90,
+            expense=9020,
+        ),
+        TransactionRecord(
+            id="4",
+            date=date(2026, 1, 6),
+            action="賣",
+            code="2317",
+            name="鴻海",
+            sell_shares=100,
+            sell_price=95,
+            income=9466,
+        ),
+        TransactionRecord(
+            id="5",
+            date=date(2026, 1, 4),
+            action="股利",
+            code="2330",
+            name="台積電",
+            income=200,
+            amount=200,
+        ),
+    ]
+    monkeypatch.setattr(_test_svc, "read_transactions", lambda: txs)
+    monkeypatch.setattr(_test_svc, "read_cashflows", lambda: [])
+
+    response = client.get(
+        "/api/realized",
+        params={"code": "2330", "from_date": "2026-01-03", "to_date": "2026-01-05"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 1
+    assert body["items"][0]["code"] == "2330"
+    assert body["dividend_income"] == pytest.approx(200)
+    assert body["dividend_by_stock"] == [{"code": "2330", "name": "台積電", "dividend_income": 200}]
+
+
+def test_prices_endpoint_rejects_too_many_codes(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        stocks_router,
+        "get_settings",
+        lambda: type("Settings", (), {"price_lookup_max_codes": 2})(),
+    )
+
+    response = client.get("/api/stocks/prices", params={"codes": "2330,2317,2454"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "A maximum of 2 stock codes may be requested at once"
+
+
+def test_prices_endpoint_deduplicates_and_trims_codes():
+    mock_svc = AsyncMock()
+    mock_svc.get_prices.return_value = []
+    app.dependency_overrides[get_price_service] = lambda: mock_svc
+    try:
+        response = client.get("/api/stocks/prices", params={"codes": " 2330,2317,2330, ,2454 "})
+    finally:
+        app.dependency_overrides.pop(get_price_service, None)
+
+    assert response.status_code == 200
+    mock_svc.get_prices.assert_awaited_once()
+    codes, stocks = mock_svc.get_prices.await_args.args
+    assert codes == ["2330", "2317", "2454"]
+    assert stocks == []
+
+
+def test_create_transaction_uses_live_quote_price(monkeypatch: pytest.MonkeyPatch):
+    payload = {
+        "date": "2026-01-10",
+        "action": "買",
+        "code": "2330",
+        "name": "台積電",
+        "trade_type": "一般",
+        "buy_shares": 100,
+        "buy_price": 100,
+    }
+    expected = TransactionRecord(
+        id="created",
+        date=date(2026, 1, 10),
+        action="買",
+        code="2330",
+        name="台積電",
+        trade_type="一般",
+        buy_shares=100,
+        buy_price=100,
+        current_price=123.4,
+        expense=10020,
+    )
+    captured: dict[str, float] = {}
+
+    def fake_append(tx_payload, *, current_price: float = 0.0):
+        captured["current_price"] = current_price
+        return expected
+
+    monkeypatch.setattr(_test_svc, "append_transaction", fake_append)
+    mock_prices = AsyncMock()
+    mock_prices.get_price.return_value = type("Quote", (), {"price": 123.4})()
+    app.dependency_overrides[get_price_service] = lambda: mock_prices
+    try:
+        response = client.post("/api/transactions", json=payload)
+    finally:
+        app.dependency_overrides.pop(get_price_service, None)
+
+    assert response.status_code == 200
+    assert captured["current_price"] == pytest.approx(123.4)
+    assert response.json()["id"] == "created"
+
+
+def test_update_transaction_returns_404_when_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(_test_svc, "update_transaction", lambda tx_id, payload: (_ for _ in ()).throw(KeyError(tx_id)))
+
+    response = client.put(
+        "/api/transactions/missing",
+        json={
+            "date": "2026-01-10",
+            "action": "買",
+            "code": "2330",
+            "name": "台積電",
+            "trade_type": "一般",
+            "buy_shares": 100,
+            "buy_price": 100,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Transaction not found"
+
+
+def test_delete_transaction_returns_404_when_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(_test_svc, "delete_transaction", lambda tx_id: (_ for _ in ()).throw(KeyError(tx_id)))
+
+    response = client.delete("/api/transactions/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Transaction not found"
+
+
+def test_cashflow_crud_endpoints_cover_success_and_not_found(monkeypatch: pytest.MonkeyPatch):
+    created = CashflowRecord(
+        id="cf-new",
+        date=date(2026, 1, 10),
+        deposit=5000,
+        withdrawal=0,
+    )
+    updated = CashflowRecord(
+        id="cf-existing",
+        date=date(2026, 1, 11),
+        deposit=0,
+        withdrawal=1200,
+    )
+    monkeypatch.setattr(_test_svc, "read_cashflows", lambda: [created])
+    monkeypatch.setattr(_test_svc, "append_cashflow", lambda payload: created)
+    monkeypatch.setattr(_test_svc, "update_cashflow", lambda cf_id, payload: updated if cf_id == "cf-existing" else (_ for _ in ()).throw(KeyError(cf_id)))
+    monkeypatch.setattr(_test_svc, "delete_cashflow", lambda cf_id: None if cf_id == "cf-existing" else (_ for _ in ()).throw(KeyError(cf_id)))
+
+    list_response = client.get("/api/cashflow")
+    create_response = client.post("/api/cashflow", json={"date": "2026-01-10", "deposit": 5000, "withdrawal": 0})
+    update_response = client.put("/api/cashflow/cf-existing", json={"date": "2026-01-11", "deposit": 0, "withdrawal": 1200})
+    missing_update_response = client.put("/api/cashflow/missing", json={"date": "2026-01-11", "deposit": 0, "withdrawal": 1200})
+    delete_response = client.delete("/api/cashflow/cf-existing")
+    missing_delete_response = client.delete("/api/cashflow/missing")
+
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == "cf-new"
+    assert create_response.status_code == 200
+    assert create_response.json()["deposit"] == 5000
+    assert update_response.status_code == 200
+    assert update_response.json()["withdrawal"] == 1200
+    assert missing_update_response.status_code == 404
+    assert missing_update_response.json()["detail"] == "Cashflow not found"
+    assert delete_response.status_code == 204
+    assert missing_delete_response.status_code == 404
+    assert missing_delete_response.json()["detail"] == "Cashflow not found"
+
+
+def test_holdings_endpoint_uses_live_prices(monkeypatch: pytest.MonkeyPatch):
+    txs = [
+        TransactionRecord(
+            id="1",
+            date=date(2026, 1, 1),
+            action="買",
+            code="2330",
+            name="台積電",
+            buy_shares=100,
+            buy_price=100,
+            expense=10020,
+        )
+    ]
+    monkeypatch.setattr(_test_svc, "read_transactions", lambda: txs)
+    monkeypatch.setattr(_test_svc, "read_cashflows", lambda: [])
+    monkeypatch.setattr(_test_svc, "read_stocks", lambda: [])
+    mock_prices = AsyncMock()
+    mock_prices.get_prices.return_value = [
+        type("Quote", (), {"code": "2330", "price": 150.0})(),
+    ]
+    app.dependency_overrides[get_price_service] = lambda: mock_prices
+    try:
+        response = client.get("/api/holdings")
+    finally:
+        app.dependency_overrides.pop(get_price_service, None)
+
+    assert response.status_code == 200
+    assert response.json()[0]["code"] == "2330"
+    assert response.json()[0]["current_price"] == pytest.approx(150.0)

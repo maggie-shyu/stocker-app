@@ -5,12 +5,13 @@ import time
 
 import httpx
 
-from models.schemas import PriceQuote, StockLookup
+from backend.models.schemas import PriceQuote, StockLookup
 
 
 class PriceService:
     def __init__(self):
         self._cache: dict[str, tuple[float, PriceQuote]] = {}
+        self._semaphore = asyncio.Semaphore(10)
 
     async def get_prices(self, codes: list[str], stocks: list[StockLookup]) -> list[PriceQuote]:
         stock_names = {stock.code: stock.name for stock in stocks}
@@ -36,10 +37,11 @@ class PriceService:
         url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
         params = {"ex_ch": f"{market}_{code}.tw", "json": "1", "delay": "0"}
         try:
-            async with httpx.AsyncClient(timeout=3) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
+            async with self._semaphore:
+                async with httpx.AsyncClient(timeout=3) as client:
+                    response = await client.get(url, params=params)
+                    response.raise_for_status()
+                    data = response.json()
         except Exception:
             return PriceQuote(code=code, name=name, price=None, delayed=True)
 

@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from models.schemas import CashflowRecord, TransactionRecord
-from services.calculator import calculate_trade_financials, compute_portfolio
-from services.csv_service import CsvService
+from backend.models.schemas import CashflowRecord, TransactionRecord
+from backend.services.calculator import calculate_trade_financials, compute_portfolio
+from backend.tests.support.csv_fixture_service import CsvFixtureService
 
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "tommy"
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 @pytest.fixture(autouse=True)
 def stable_discount_rate(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(CsvService, "get_commission_discount_rate", lambda self: 0.0)
+    monkeypatch.setattr(CsvFixtureService, "get_commission_discount_rate", lambda self: 0.0)
 
 
 def test_fee_preview_matches_minimum_discounted_fee_rule():
@@ -91,7 +91,7 @@ def test_sell_tax_uses_etf_rate():
 
 
 def test_fifo_portfolio_price_independent_values():
-    service = CsvService(DATA_DIR)
+    service = CsvFixtureService(DATA_DIR)
     portfolio = compute_portfolio(
         transactions=service.read_transactions(),
         cashflows=service.read_cashflows(),
@@ -100,7 +100,7 @@ def test_fifo_portfolio_price_independent_values():
 
     assert len(portfolio.holdings) > 0
     assert portfolio.principal == pytest.approx(2670399.0)
-    assert portfolio.cash_balance == pytest.approx(183564.8)
+    assert portfolio.cash_balance == pytest.approx(183815.8)
     assert portfolio.realized_pnl > 0
     assert portfolio.realized_pnl_rate > 0
     assert portfolio.dividend_income > 0

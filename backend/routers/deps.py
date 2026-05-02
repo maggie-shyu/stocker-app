@@ -6,12 +6,13 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from jwt import PyJWKClient
 
-from config import get_settings
-from services.price_service import PriceService
+from backend.config import get_settings
+from backend.services.price_service import PriceService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 _supabase_client = None
 _jwks_client = None
+_ALLOWED_ASYMMETRIC_ALGORITHMS = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "EdDSA"}
 
 
 def get_supabase_client():
@@ -40,6 +41,7 @@ def get_jwks_client() -> PyJWKClient:
 def decode_supabase_token(token: str) -> dict:
     settings = get_settings()
     issuer = f"{settings.supabase_url}/auth/v1"
+    audience = settings.supabase_jwt_audience
 
     try:
         unverified_header = pyjwt.get_unverified_header(token)
@@ -56,17 +58,18 @@ def decode_supabase_token(token: str) -> dict:
                 settings.supabase_legacy_jwt_secret,
                 algorithms=["HS256"],
                 issuer=issuer,
-                options={"verify_aud": False},
+                audience=audience,
             )
 
+        if algorithm not in _ALLOWED_ASYMMETRIC_ALGORITHMS:
+            raise JWTError("Unsupported token algorithm")
         signing_key = get_jwks_client().get_signing_key_from_jwt(token)
-        decode_algorithms = [algorithm] if algorithm else None
         return pyjwt.decode(
             token,
             signing_key.key,
-            algorithms=decode_algorithms,
+            algorithms=[algorithm],
             issuer=issuer,
-            options={"verify_aud": False},
+            audience=audience,
         )
     except pyjwt.PyJWTError as exc:
         raise JWTError("Invalid or expired token") from exc
@@ -84,7 +87,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
 
 
 def get_supabase_service(user_id: str = Depends(get_current_user)):
-    from services.supabase_service import SupabaseService
+    from backend.services.supabase_service import SupabaseService
 
     return SupabaseService(get_supabase_client(), user_id)
 
