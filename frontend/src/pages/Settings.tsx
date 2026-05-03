@@ -153,7 +153,7 @@ export function Settings() {
       };
     },
     onSuccess: async (result) => {
-      setImportMessage(`已匯入 ${result.transactions_imported} 筆交易、${result.cashflows_imported} 筆出入金。`);
+      setImportMessage(`已匯入 ${result.transactions_imported} 筆交易紀錄、${result.cashflows_imported} 筆資金異動。`);
       await invalidateQueries([queryKeys.settings, ...portfolioQueryKeys]);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
@@ -200,9 +200,9 @@ export function Settings() {
   const exportLoading = transactions.isLoading || cashflows.isLoading;
   const exportLabel = exporting ? "匯出中..." : exportLoading ? "確認資料中..." : hasUserData ? "匯出 Excel" : "匯出 Excel 範本";
   const exportHint = exportLoading
-    ? "正在確認目前帳號是否已有交易或出入金資料。"
+    ? "正在確認目前帳號是否已有交易紀錄或資金異動資料。"
     : hasUserData
-      ? "下載包含交易紀錄與出入金的 Excel 檔案。"
+      ? "下載包含交易紀錄與資金異動的 Excel 檔案。"
       : "目前沒有資料，將匯出可直接填寫的 Excel 範本。";
   const currentAccount = session?.user.email ?? session?.user.id ?? "未提供";
 
@@ -287,12 +287,14 @@ export function Settings() {
                 {taxMessage ? <p className="mt-2 text-sm font-medium text-accent">{taxMessage}</p> : null}
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">目前稅率</p>
                 <p className="mt-1 text-2xl font-bold text-accent">{percent(current.stock_tax_rate)}</p>
               </div>
-              <Button tone="ghost" className="!text-accent hover:!bg-teal-50 hover:!text-teal-800" onClick={openTaxDialog}>調整交易稅</Button>
+              <Button tone="ghost" className="w-full shrink-0 whitespace-nowrap !text-accent hover:!bg-teal-50 hover:!text-teal-800 sm:w-auto" onClick={openTaxDialog}>
+                調整交易稅
+              </Button>
             </div>
           </div>
         </Card>
@@ -309,12 +311,14 @@ export function Settings() {
                 {feeMessage ? <p className="mt-2 text-sm font-medium text-accent">{feeMessage}</p> : null}
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">目前折數</p>
                 <p className="mt-1 text-2xl font-bold text-accent">{percent(current.commission_discount_rate)}</p>
               </div>
-              <Button tone="ghost" className="!text-accent hover:!bg-teal-50 hover:!text-teal-800" onClick={openFeeDialog}>調整手續費</Button>
+              <Button tone="ghost" className="w-full shrink-0 whitespace-nowrap !text-accent hover:!bg-teal-50 hover:!text-teal-800 sm:w-auto" onClick={openFeeDialog}>
+                調整手續費
+              </Button>
             </div>
           </div>
         </Card>
@@ -333,12 +337,17 @@ export function Settings() {
                 <p className="mt-1 text-sm text-muted">{exportHint}</p>
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Excel</p>
                 <p className="mt-1 text-sm font-medium text-ink">{exportLabel}</p>
               </div>
-              <Button tone="ghost" className="!text-accent hover:!bg-teal-50 hover:!text-teal-800" disabled={exporting || exportLoading} onClick={handleExport}>
+              <Button
+                tone="ghost"
+                className="w-full shrink-0 whitespace-nowrap !text-accent hover:!bg-teal-50 hover:!text-teal-800 sm:w-auto"
+                disabled={exporting || exportLoading}
+                onClick={handleExport}
+              >
                 {exportLabel}
               </Button>
             </div>
@@ -353,18 +362,23 @@ export function Settings() {
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="text-lg font-bold text-ink">匯入資料</h2>
-                <p className="mt-1 text-sm text-muted">上傳系統匯出的 Excel，將覆蓋目前帳號的交易紀錄與出入金資料。</p>
+                <p className="mt-1 text-sm text-muted">上傳系統匯出的 Excel，將覆蓋目前帳號的交易紀錄與資金異動資料。</p>
                 {importMessage ? <p className="mt-2 text-sm font-medium text-accent">{importMessage}</p> : null}
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">上傳 Excel</p>
                 <p className="mt-1 text-sm font-medium text-ink">支援系統匯出的檔案格式。</p>
               </div>
               <div>
                 <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event) => void handleImportSelect(event)} />
-                <Button tone="ghost" className="!text-accent hover:!bg-teal-50 hover:!text-teal-800" disabled={importMutation.isPending} onClick={() => fileInputRef.current?.click()}>
+                <Button
+                  tone="ghost"
+                  className="w-full shrink-0 whitespace-nowrap !text-accent hover:!bg-teal-50 hover:!text-teal-800 sm:w-auto"
+                  disabled={importMutation.isPending}
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   {importMutation.isPending ? "匯入中..." : "選擇 Excel"}
                 </Button>
               </div>
@@ -387,12 +401,14 @@ export function Settings() {
                 {passwordMessage ? <p className="mt-2 text-sm font-medium text-accent">{passwordMessage}</p> : null}
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">安全設定</p>
                 <p className="mt-1 text-sm font-medium text-ink">按下後填入目前密碼與新密碼。</p>
               </div>
-              <Button tone="ghost" className="!text-accent hover:!bg-teal-50 hover:!text-teal-800" onClick={openPasswordDialog}>更改密碼</Button>
+              <Button tone="ghost" className="w-full shrink-0 whitespace-nowrap !text-accent hover:!bg-teal-50 hover:!text-teal-800 sm:w-auto" onClick={openPasswordDialog}>
+                更改密碼
+              </Button>
             </div>
           </div>
         </Card>
@@ -408,12 +424,14 @@ export function Settings() {
                 <p className="mt-1 text-sm text-muted">結束目前的登入工作階段。</p>
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3">
+            <div className="mt-auto flex flex-col gap-3 rounded-2xl border border-line bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">目前帳號</p>
                 <p className="mt-1 truncate text-sm font-medium text-ink">{currentAccount}</p>
               </div>
-              <Button tone="danger" onClick={() => void signOut()}>登出</Button>
+              <Button tone="danger" className="w-full shrink-0 whitespace-nowrap sm:w-auto" onClick={() => void signOut()}>
+                登出
+              </Button>
             </div>
           </div>
         </Card>

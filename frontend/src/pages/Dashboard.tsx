@@ -36,13 +36,39 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
       <PageHeader
-        eyebrow="投資總覽"
-        title="投資儀表板"
+        eyebrow="Dashboard"
+        title="儀表板"
         description="用一眼能讀懂的方式追蹤帳戶淨值、損益、現金與庫存配置。"
       />
 
       <Card className="overflow-hidden bg-gradient-to-br from-moss to-[#10251e] p-0 text-white">
-        <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.3fr_0.7fr] lg:p-7">
+        <div className="flex flex-col sm:hidden">
+          {/* 帳戶淨值 */}
+          <div className="border-b border-white/15 p-5">
+            <p className="text-sm font-semibold text-white/70">帳戶淨值</p>
+            <div className="mt-3 text-4xl font-bold tracking-tight">{money(data.account_value)}</div>
+          </div>
+
+          {/* 今日損益 */}
+          <div className="border-b border-white/15 p-5">
+            <p className="text-sm font-semibold text-white/70">今日損益</p>
+            <div className="mt-3 flex items-baseline gap-2">
+              <div className={`text-3xl font-bold ${data.today_pnl >= 0 ? "text-rose-100" : "text-emerald-100"}`}>{money(data.today_pnl)}</div>
+              <span className={`text-sm font-semibold ${data.today_pnl_rate >= 0 ? "text-rose-100" : "text-emerald-100"}`}>{percent(data.today_pnl_rate)}</span>
+            </div>
+          </div>
+
+          {/* 累積損益 */}
+          <div className="p-5">
+            <p className="text-sm font-semibold text-white/70">累積損益</p>
+            <div className="mt-3 flex items-baseline gap-2">
+              <div className={`text-3xl font-bold ${data.account_pnl >= 0 ? "text-rose-100" : "text-emerald-100"}`}>{money(data.account_pnl)}</div>
+              <span className={`text-sm font-semibold ${data.account_pnl_rate >= 0 ? "text-rose-100" : "text-emerald-100"}`}>{percent(data.account_pnl_rate)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="hidden sm:grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.3fr_0.7fr] lg:p-7">
           <div>
             <p className="text-sm font-semibold text-white/70">帳戶淨值</p>
             <div className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">{money(data.account_value)}</div>
@@ -64,11 +90,11 @@ export function Dashboard() {
         <MetricCard icon={Wallet} label="本金" value={data.principal} description="入金 - 出金" />
         <MetricCard icon={Landmark} label="股票市值" value={data.stock_market_value} description="依可用報價計算" />
         <MetricCard icon={Banknote} label="現金部位" value={data.cash_balance} description="本金與交易後餘額" />
-        <MetricCard icon={TrendingUp} label="0050報酬率" value={data.benchmark_return_rate ?? 0} valueFormatter={percent} description={`自 ${data.start_date || '交易起始日'} 開始`} tone="signed" />
-        <MetricCard icon={LineChart} label="未實現損益" value={data.unrealized_pnl} description={percent(data.unrealized_pnl_rate)} tone="signed" />
         <MetricCard icon={Activity} label="已實現損益" value={data.realized_pnl} description={percent(data.realized_pnl_rate)} tone="signed" />
+        <MetricCard icon={LineChart} label="未實現損益" value={data.unrealized_pnl} description={percent(data.unrealized_pnl_rate)} tone="signed" />
         <MetricCard icon={BadgeDollarSign} label="年化報酬率" value={data.annualized_return_rate} valueFormatter={percent} description={`依 ${data.investment_years.toFixed(2)} 年換算`} tone="signed" />
         <MetricCard icon={TrendingUp} label="帳戶報酬率" value={data.account_pnl_rate} valueFormatter={percent} description={`自 ${data.start_date || '交易起始日'} 開始`} tone="signed" />
+        <MetricCard icon={TrendingUp} label="0050報酬率" value={data.benchmark_return_rate ?? 0} valueFormatter={percent} description={`自 ${data.start_date || '交易起始日'} 開始`} tone="signed" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -76,7 +102,7 @@ export function Dashboard() {
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-ink">持股配置</h2>
-              <p className="text-sm text-muted">依目前市值排序。</p>
+              <p className="text-sm text-muted">庫藏股 + 現金部位</p>
             </div>
           </div>
           {data.holdings_pie.length || data.cash_balance > 0 ? (
@@ -93,7 +119,7 @@ export function Dashboard() {
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={pieData} dataKey="market_value" nameKey="name" innerRadius={86} outerRadius={156} paddingAngle={2}>
+                        <Pie data={pieData} dataKey="market_value" nameKey="name" innerRadius={80} outerRadius={140} paddingAngle={2}>
                           {pieData.map((entry, index) => (
                             <Cell key={entry.name} fill={entry.isCash ? cashColor : stockColors[index % stockColors.length]} />
                           ))}

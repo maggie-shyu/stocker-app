@@ -65,6 +65,7 @@ export type HoldingLot = {
   shares: number;
   cost_per_share: number;
   cost_basis: number;
+  trade_type: "一般" | "當沖";
 };
 
 export type Holding = {
@@ -72,10 +73,14 @@ export type Holding = {
   name: string;
   lots: HoldingLot[];
   total_shares: number;
+  net_avg_cost: number;
   avg_cost: number;
   current_price: number;
   market_value: number;
   cost_basis: number;
+  cumulative_dividend: number;
+  cumulative_pnl: number;
+  cumulative_pnl_rate: number;
   unrealized_pnl: number;
   unrealized_pnl_rate: number;
   weight: number;
@@ -92,6 +97,8 @@ export type RealizedTrade = {
   cost_basis: number;
   realized_pnl: number;
   realized_pnl_rate: number;
+  trade_type: "一般" | "當沖";
+  reason?: string | null;
 };
 
 export type DividendIncomeByStock = {
@@ -140,7 +147,10 @@ export type AdminOverview = {
   users_with_transactions: number;
   users_with_cashflows: number;
   supabase_memory_usage_percent: number | null;
-  database_space_used_bytes: number | null;
+  cpu_busy_percent: number | null;
+  disk_usage_percent: number | null;
+  connection_rate_percent: number | null;
+  active_queries: number | null;
 };
 
 export type AdminTableSummary = {

@@ -11,9 +11,8 @@ const SORT_COLS = [
   { key: "code", label: "代號" },
   { key: "total_shares", label: "股數" },
   { key: "market_value", label: "市值" },
-  { key: "unrealized_pnl", label: "損益" },
-  { key: "unrealized_pnl_rate", label: "報酬率" },
-  { key: "weight", label: "比重" },
+  { key: "cumulative_pnl", label: "損益" },
+  { key: "cumulative_pnl_rate", label: "報酬率" },
 ] as const;
 
 type SortKey = typeof SORT_COLS[number]["key"];
@@ -61,6 +60,17 @@ export function Holdings() {
     return sortItems(items, (item: Holding) => item[sortKey], sortDir);
   }, [data, sortKey, sortDir]);
 
+  const filtered = useMemo(() => {
+    // Filter out holdings that are purely from day trades (當沖)
+    return sorted.filter((holding) => {
+      // Check if all lots are from day trades
+      const allDayTrade = holding.lots.every((lot) => lot.trade_type === "當沖");
+      // Only filter out if ALL lots are day trades AND total shares is 0 or very small
+      // (This shouldn't normally happen since holdings exclude fully sold positions)
+      return !allDayTrade || holding.total_shares > 1e-9;
+    });
+  }, [sorted]);
+
   if (isLoading) return <SkeletonBlock label="載入持股中..." />;
 
   return (
@@ -68,7 +78,7 @@ export function Holdings() {
       <PageHeader
         eyebrow="Open positions"
         title="持股狀況"
-        description={`${sorted.length} 檔庫存，依成本、現值與未實現損益整理。`}
+        description={`${filtered.length} 檔庫存，整理成本、現值與未實現損益(預扣賣出費用)。`}
       />
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-panel/90 p-3 text-sm shadow-card">
@@ -95,9 +105,9 @@ export function Holdings() {
         })}
       </div>
 
-      {sorted.length ? (
+      {filtered.length ? (
         <div className="grid gap-3">
-          {sorted.map((holding) => {
+          {filtered.map((holding) => {
             const isExpanded = expandedCode === holding.code;
             return (
               <article
@@ -119,14 +129,14 @@ export function Holdings() {
                         <Badge tone="accent">{percent(holding.weight)} 配置</Badge>
                       </div>
                       <p className="mt-2 text-sm text-muted">
-                        {holding.total_shares.toLocaleString()} 股 · 成本均 {price(holding.avg_cost)} · 現價 {price(holding.current_price)}
+                        {holding.total_shares.toLocaleString()} 股 · 成本均 {price(holding.net_avg_cost)} · 買均 {price(holding.avg_cost)} · 現價 {price(holding.current_price)}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 sm:justify-end">
                       <div className="sm:text-right">
                         <div className="text-xl font-bold">{money(holding.market_value)}</div>
-                        <div className={`text-sm font-semibold ${signedClass(holding.unrealized_pnl)}`}>
-                          {money(holding.unrealized_pnl)} · {percent(holding.unrealized_pnl_rate)}
+                        <div className={`text-sm font-semibold ${signedClass(holding.cumulative_pnl)}`}>
+                          {money(holding.cumulative_pnl)} · {percent(holding.cumulative_pnl_rate)}
                         </div>
                       </div>
                       <ChevronDown

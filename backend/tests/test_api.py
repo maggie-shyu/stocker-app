@@ -25,7 +25,10 @@ class TestAdminService:
             "users_with_transactions": 2,
             "users_with_cashflows": 2,
             "supabase_memory_usage_percent": 58.0,
-            "database_space_used_bytes": 536870912,
+            "cpu_busy_percent": 42.0,
+            "disk_usage_percent": 75.0,
+            "connection_rate_percent": 70.0,
+            "active_queries": 12,
         }
 
     def list_tables(self):
@@ -166,7 +169,9 @@ def test_admin_endpoints_return_overview_and_table_data(monkeypatch: pytest.Monk
 
     assert overview.status_code == 200
     assert overview.json()["total_users"] == 3
-    assert overview.json()["database_space_used_bytes"] == 536870912
+    assert overview.json()["disk_usage_percent"] == 75.0
+    assert overview.json()["connection_rate_percent"] == 70.0
+    assert overview.json()["active_queries"] == 12
     assert overview.json()["supabase_memory_usage_percent"] == 58.0
     assert tables.status_code == 200
     assert tables.json()[0]["name"] == "transactions"

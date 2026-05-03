@@ -19,7 +19,10 @@ const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock, authState } = vi.hoi
           users_with_transactions: 2,
           users_with_cashflows: 2,
           supabase_memory_usage_percent: 58.0,
-          database_space_used_bytes: 536870912,
+          cpu_busy_percent: 42.0,
+          disk_usage_percent: 75.0,
+          connection_rate_percent: 70.0,
+          active_queries: 12,
         },
       });
     }
@@ -294,8 +297,8 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "持股狀況" })).toBeInTheDocument();
     expect((await screen.findAllByText(/波若威/)).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("link", { name: /已實現損益/ }));
-    expect(await screen.findByRole("heading", { name: "已實現損益" })).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /平倉盈虧/ }));
+    expect(await screen.findByRole("heading", { name: "平倉盈虧" })).toBeInTheDocument();
     expect(await screen.findByText("953,960")).toBeInTheDocument();
     expect((await screen.findAllByText("3130 一零四")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("賣均")).length).toBeGreaterThan(0);
@@ -304,8 +307,8 @@ describe("App", () => {
     expect((await screen.findAllByText("7,506")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("14,284")).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("link", { name: /出入金/ }));
-    expect(await screen.findByRole("heading", { name: "出入金" })).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /資金異動/ }));
+    expect(await screen.findByRole("heading", { name: "資金異動" })).toBeInTheDocument();
     expect((await screen.findAllByText("565,554")).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("link", { name: /設定/ }));
@@ -320,12 +323,14 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Admin Console" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "管理者後台" })).toBeInTheDocument();
     expect(await screen.findByText("總使用者數")).toBeInTheDocument();
-    expect(await screen.findByText("RAM Usage")).toBeInTheDocument();
-    expect(await screen.findByText("Disk Space Used")).toBeInTheDocument();
+    expect(await screen.findByText("CPU Usage")).toBeInTheDocument();
+    expect(await screen.findByText("Disk Usage")).toBeInTheDocument();
+    expect(await screen.findByText("Connection Rate")).toBeInTheDocument();
+    expect(await screen.findByText("Active Queries")).toBeInTheDocument();
     expect(await screen.findByDisplayValue("交易紀錄")).toBeInTheDocument();
-    expect(await screen.findByText("512.0 MB")).toBeInTheDocument();
+    expect(await screen.findByText("75.0%")).toBeInTheDocument();
     expect(await screen.findByText("顯示 1 - 25 列")).toBeInTheDocument();
   });
 
@@ -392,7 +397,7 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "調整手續費" }));
     await user.click(await screen.findByRole("button", { name: "儲存" }));
 
-    await user.click(screen.getByRole("link", { name: /出入金/ }));
+    await user.click(screen.getByRole("link", { name: /資金異動/ }));
     await user.clear(await screen.findByPlaceholderText("入金"));
     await user.type(screen.getByPlaceholderText("入金"), "1000");
     await user.click(screen.getByRole("button", { name: "新增" }));

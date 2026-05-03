@@ -27,6 +27,7 @@ class Lot:
     shares: float
     cost_per_share: float
     price_per_share: float
+    trade_type: str = "一般"
 
     @property
     def cost_basis(self) -> float:
@@ -65,24 +66,43 @@ def _build_visible_lots(raw_lots: deque[Lot]) -> list[HoldingLot]:
             shares=_money(lot.shares),
             cost_per_share=_money(lot.cost_per_share),
             cost_basis=_money(lot.cost_basis),
+            trade_type=lot.trade_type,
         )
         for lot in raw_lots
         if lot.shares > 1e-9
     ]
 
 
-def _sell_lots(lots: deque[Lot], shares_to_sell: float) -> tuple[float, float]:
+def _sell_lots(lots: deque[Lot], shares_to_sell: float, day_trade_date: date | None = None) -> tuple[float, float]:
     consumed_cost = 0.0
     consumed_buy_amount = 0.0
     remaining = shares_to_sell
 
-    while remaining > 0 and lots:
+    # For 當沖 sells: consume same-day 當沖 lots before regular FIFO lots,
+    # so the 當沖 buy is matched to its own sell rather than eating older normal lots.
+    if day_trade_date is not None:
+        for lot in lots:
+            if remaining <= 1e-9:
+                break
+            if lot.trade_type == "當沖" and lot.date == day_trade_date:
+                taken = min(remaining, lot.shares)
+                consumed_cost += taken * lot.cost_per_share
+                consumed_buy_amount += taken * lot.price_per_share
+                lot.shares -= taken
+                remaining -= taken
+        # Prune any lots fully consumed by the 當沖 pass
+        non_empty = [lot for lot in lots if lot.shares > 1e-9]
+        lots.clear()
+        lots.extend(non_empty)
+
+    # Regular FIFO for remaining shares
+    while remaining > 1e-9 and lots:
         lot = lots[0]
-        taken_shares = min(remaining, lot.shares)
-        consumed_cost += taken_shares * lot.cost_per_share
-        consumed_buy_amount += taken_shares * lot.price_per_share
-        lot.shares -= taken_shares
-        remaining -= taken_shares
+        taken = min(remaining, lot.shares)
+        consumed_cost += taken * lot.cost_per_share
+        consumed_buy_amount += taken * lot.price_per_share
+        lot.shares -= taken
+        remaining -= taken
         if lot.shares <= 1e-9:
             lots.popleft()
 
@@ -162,8 +182,16 @@ def compute_portfolio(
     dividend_income = 0.0
     today_pnl = 0.0
     yesterday_stock_value = 0.0
+    # per-stock cumulative totals for 成本均 / 買均 / 累積損益
+    buy_expense_by_code: dict[str, float] = defaultdict(float)
+    buy_shares_by_code: dict[str, float] = defaultdict(float)
+    sell_income_by_code: dict[str, float] = defaultdict(float)
+    sell_trade_cost_by_code: dict[str, float] = defaultdict(float)  # sell_fee + sell_tax
+    dividend_by_code: dict[str, float] = defaultdict(float)
 
-    for tx in sorted(transactions, key=lambda item: (item.date, item.id)):
+    # Buys must be processed before sells on the same date so 當沖 buy lots exist when sell runs
+    _ACTION_ORDER = {"買": 0, "賣": 1, "股利": 2}
+    for tx in sorted(transactions, key=lambda item: (item.date, _ACTION_ORDER.get(item.action, 99), item.id)):
         names[tx.code] = tx.name
         if tx.current_price:
             current_prices[tx.code] = tx.current_price
@@ -172,17 +200,23 @@ def compute_portfolio(
             shares = _resolve_trade_shares(tx)
             if shares <= 0:
                 continue
+            buy_expense_by_code[tx.code] += _to_float(tx.expense)
+            buy_shares_by_code[tx.code] += shares
             lots_by_code[tx.code].append(
                 Lot(
                     date=tx.date,
                     shares=shares,
                     cost_per_share=_to_float(tx.expense) / shares,
                     price_per_share=_to_float(tx.buy_price),
+                    trade_type=tx.trade_type,
                 )
             )
         elif tx.action == "賣":
             shares_to_sell = _resolve_trade_shares(tx)
-            consumed_cost, consumed_buy_amount = _sell_lots(lots_by_code[tx.code], shares_to_sell)
+            sell_income_by_code[tx.code] += _to_float(tx.income)
+            sell_trade_cost_by_code[tx.code] += _to_float(tx.trade_cost)
+            day_trade_date = tx.date if tx.trade_type == "當沖" else None
+            consumed_cost, consumed_buy_amount = _sell_lots(lots_by_code[tx.code], shares_to_sell, day_trade_date)
             pnl = _to_float(tx.income) - consumed_cost
             realized_trades.append(
                 RealizedTrade(
@@ -196,11 +230,14 @@ def compute_portfolio(
                     cost_basis=_money(consumed_cost),
                     realized_pnl=_money(pnl),
                     realized_pnl_rate=(pnl / consumed_cost) if consumed_cost else 0,
+                    trade_type=tx.trade_type,
                     reason=tx.reason,
                 )
             )
         elif tx.action == "股利":
-            dividend_income += _to_float(tx.income)
+            inc = _to_float(tx.income)
+            dividend_income += inc
+            dividend_by_code[tx.code] += inc
 
     if live_prices:
         current_prices.update(live_prices)
@@ -222,19 +259,38 @@ def compute_portfolio(
         if total_shares > 0:
             today_pnl += (current_price - previous_close) * total_shares
             yesterday_stock_value += previous_close * total_shares
-        
+
         market_value = total_shares * current_price
         unrealized = market_value - cost_basis
+
+        total_buy_exp = buy_expense_by_code[code]
+        total_buy_sh = buy_shares_by_code[code]
+        total_sell_inc = sell_income_by_code[code]
+        stock_div = dividend_by_code[code]
+        # 買均: 累計買入總金額（含手續費）/ 累計買入股數
+        avg_cost = total_buy_exp / total_buy_sh if total_buy_sh else 0
+        # 持股總成本 = 累計買入 - 累計賣出 - 累計股息
+        net_invested = total_buy_exp - total_sell_inc - stock_div
+        # 成本均: 持股總成本 / 剩餘股數
+        net_avg_cost = net_invested / total_shares if total_shares else 0
+        # 持股累積損益 = 市值 - 賣出手續費 - 交易稅 + 累計股息 - (買進金額 + 買進手續費)
+        cum_pnl = market_value + stock_div - total_buy_exp - sell_trade_cost_by_code[code]
+        cum_pnl_rate = cum_pnl / net_invested if net_invested else 0
+
         holdings.append(
             Holding(
                 code=code,
                 name=names.get(code, code),
                 lots=visible_lots,
                 total_shares=_money(total_shares),
-                avg_cost=_money(cost_basis / total_shares) if total_shares else 0,
+                net_avg_cost=_money(net_avg_cost),
+                avg_cost=_money(avg_cost),
                 current_price=_money(current_price),
                 market_value=_money(market_value),
                 cost_basis=_money(cost_basis),
+                cumulative_dividend=_money(stock_div),
+                cumulative_pnl=_money(cum_pnl),
+                cumulative_pnl_rate=cum_pnl_rate,
                 unrealized_pnl=_money(unrealized),
                 unrealized_pnl_rate=(unrealized / cost_basis) if cost_basis else 0,
                 weight=(market_value / stock_market_value) if stock_market_value else 0,

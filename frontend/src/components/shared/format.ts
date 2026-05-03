@@ -10,7 +10,9 @@ export function price(value?: number | null) {
 }
 
 export function percent(value?: number | null) {
-  return `${(((value ?? 0) * 100).toFixed(2))}%`;
+  const val = (value ?? 0) * 100;
+  const formatted = val.toFixed(2);
+  return val < 0 ? `${formatted}%` : `+${formatted}%`;
 }
 
 export function signedClass(value?: number | null) {

@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Button, Card, EmptyState, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
+import { Card, EmptyState, PageHeader, SelectField, SkeletonBlock } from "../components/shared/UI";
 import { useAdminOverview, useAdminTableData, useAdminTables } from "../hooks/queries";
 
 
@@ -9,33 +9,22 @@ function StatCard({
   title,
   value,
   description,
+  valueFormatter = (currentValue: number) => `${currentValue.toFixed(1)}%`,
 }: {
   title: string;
   value: number | null | undefined;
   description: string;
+  valueFormatter?: (value: number) => string;
 }) {
   return (
     <Card>
       <p className="text-sm font-semibold text-muted">{title}</p>
       <div className="mt-2 text-3xl font-bold tracking-tight text-ink">
-        {value == null ? "Unavailable" : `${value.toFixed(1)}%`}
+        {value == null ? "Unavailable" : valueFormatter(value)}
       </div>
       <p className="mt-2 text-sm text-muted">{description}</p>
     </Card>
   );
-}
-
-
-function formatBytes(value: number | null | undefined) {
-  if (value == null) return "Unavailable";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let current = value;
-  let unitIndex = 0;
-  while (current >= 1024 && unitIndex < units.length - 1) {
-    current /= 1024;
-    unitIndex += 1;
-  }
-  return `${current.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function formatVisibleRowRange(page: number, pageSize: number, total: number) {
@@ -51,7 +40,34 @@ export function Admin() {
   const tables = useAdminTables();
   const [selectedTable, setSelectedTable] = useState("");
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(window.innerWidth >= 1024 ? 25 : 10);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPageSize(window.innerWidth >= 1024 ? 25 : 10);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      input[type="number"]::-webkit-outer-spin-button,
+      input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      input[type="number"] {
+        -moz-appearance: textfield;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   const tableData = useAdminTableData(selectedTable, page, pageSize, Boolean(selectedTable));
 
   useEffect(() => {
@@ -62,7 +78,7 @@ export function Admin() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedTable]);
+  }, [selectedTable, pageSize]);
 
   if (overview.isLoading || tables.isLoading) {
     return <SkeletonBlock label="載入管理介面中..." />;
@@ -72,38 +88,36 @@ export function Admin() {
     <section className="space-y-5">
       <PageHeader
         eyebrow="Admin"
-        title="Admin Console"
+        title="管理者後台"
         description="集中查看 Supabase 資源狀態與全站資料概況，並瀏覽受控資料表。"
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card>
-          <p className="text-sm font-semibold text-muted">總使用者數</p>
-          <div className="mt-2 text-3xl font-bold tracking-tight text-ink">{overview.data?.total_users?.toLocaleString() ?? "0"}</div>
-          <p className="mt-2 text-sm text-muted">以 user settings rows 為基準。</p>
-        </Card>
-        <Card>
-          <p className="text-sm font-semibold text-muted">有交易的使用者</p>
-          <div className="mt-2 text-3xl font-bold tracking-tight text-ink">{overview.data?.users_with_transactions?.toLocaleString() ?? "0"}</div>
-          <p className="mt-2 text-sm text-muted">曾建立至少一筆交易。</p>
-        </Card>
-        <Card>
-          <p className="text-sm font-semibold text-muted">有出入金的使用者</p>
-          <div className="mt-2 text-3xl font-bold tracking-tight text-ink">{overview.data?.users_with_cashflows?.toLocaleString() ?? "0"}</div>
-          <p className="mt-2 text-sm text-muted">曾建立至少一筆出入金。</p>
-        </Card>
-        <StatCard title="RAM Usage" value={overview.data?.supabase_memory_usage_percent} description="來自 Supabase Metrics API 的記憶體使用率。" />
-        <Card>
-          <p className="text-sm font-semibold text-muted">Disk Space Used</p>
-          <div className="mt-2 text-3xl font-bold tracking-tight text-ink">
-            {formatBytes(overview.data?.database_space_used_bytes)}
-          </div>
-          <p className="mt-2 text-sm text-muted">來自 Supabase Metrics API 的資料庫實際使用空間。</p>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <StatCard
+          title="總使用者數"
+          value={overview.data?.total_users}
+          valueFormatter={(value) => value.toLocaleString()}
+          description="以 user settings rows 為基準。"
+        />
+        <StatCard
+          title="有交易的使用者"
+          value={overview.data?.users_with_transactions}
+          valueFormatter={(value) => value.toLocaleString()}
+          description="建立至少一筆交易。"
+        />
+        <StatCard title="CPU Usage" value={overview.data?.cpu_busy_percent} description="Supabase 的 CPU 使用率。" />
+        <StatCard title="Disk Usage" value={overview.data?.disk_usage_percent} description="Supabase 的檔案系統使用率。" />
+        <StatCard title="Connection Rate" value={overview.data?.connection_rate_percent} description="Supabase 目前建立的連線率。" />
+        <StatCard
+          title="Active Queries"
+          value={overview.data?.active_queries}
+          valueFormatter={(value) => value.toLocaleString()}
+          description="Supabase 目前活躍的後端連線數。"
+        />
       </div>
 
       {overview.error ? (
-        <EmptyState title="Supabase 指標暫時無法載入" description="請確認後端可以連到 Supabase Metrics API；缺少 memory 或 database size 指標時仍可使用資料表瀏覽。" />
+        <EmptyState title="Supabase 指標暫時無法載入" description="請確認後端可以連到 Supabase Metrics API；缺少 memory、disk usage 或 connection 指標時仍可使用資料表瀏覽。" />
       ) : null}
 
       <Card>
@@ -117,7 +131,7 @@ export function Admin() {
                 <EmptyState title="資料表清單無法載入" description="請確認 admin API 可讀取受控資料表，或重新整理後再試一次。" />
               ) : (
                 <SelectField
-                  label="Choose Table"
+                  label="Supabase"
                   value={selectedTable}
                   onChange={(event) => setSelectedTable(event.target.value)}
                 >
@@ -145,7 +159,15 @@ export function Admin() {
                       )}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                      disabled={page <= 1 || tableData.isLoading}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-muted hover:text-ink disabled:opacity-50"
+                    >
+                      ‹
+                    </button>
                     <input
                       type="number"
                       min="1"
@@ -157,6 +179,14 @@ export function Admin() {
                       disabled={tableData.isLoading}
                     />
                     <span className="text-sm font-semibold text-muted">/ {Math.ceil((tableData.data?.total ?? 0) / pageSize) || 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.min(Math.ceil((tableData.data?.total ?? 0) / pageSize) || 1, page + 1))}
+                      disabled={page >= Math.ceil((tableData.data?.total ?? 0) / pageSize) || tableData.isLoading}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-muted hover:text-ink disabled:opacity-50"
+                    >
+                      ›
+                    </button>
                   </div>
                 </div>
               </div>
@@ -171,7 +201,7 @@ export function Admin() {
                 </div>
               ) : tableData.data?.items.length ? (
                 <div className="max-h-[34rem] overflow-auto">
-                <table className="min-w-[1100px] divide-y divide-line text-sm">
+                  <table className="min-w-[1100px] divide-y divide-line text-sm">
                     <thead className="bg-stone-50/80">
                       <tr>
                         {tableData.data.columns.map((column) => (

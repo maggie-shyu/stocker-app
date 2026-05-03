@@ -107,7 +107,10 @@ class AdminOverview(BaseModel):
     users_with_transactions: int
     users_with_cashflows: int
     supabase_memory_usage_percent: float | None = None
-    database_space_used_bytes: int | None = None
+    cpu_busy_percent: float | None = None
+    disk_usage_percent: float | None = None
+    connection_rate_percent: float | None = None
+    active_queries: int | None = None
 
 
 class AdminTableSummary(BaseModel):
@@ -149,6 +152,7 @@ class HoldingLot(BaseModel):
     shares: float
     cost_per_share: float
     cost_basis: float
+    trade_type: TradeType = "一般"
 
 
 class Holding(BaseModel):
@@ -156,10 +160,14 @@ class Holding(BaseModel):
     name: str
     lots: list[HoldingLot]
     total_shares: float
-    avg_cost: float
+    net_avg_cost: float        # (累計買入 - 累計賣出 - 累計股息) / 剩餘股數
+    avg_cost: float            # 累計買入總金額 / 累計買入股數
     current_price: float
     market_value: float
     cost_basis: float
+    cumulative_dividend: float # 此股累計股息收入
+    cumulative_pnl: float      # (市值 + 累計股息) - 持股總成本
+    cumulative_pnl_rate: float # cumulative_pnl / 持股總成本
     unrealized_pnl: float
     unrealized_pnl_rate: float
     weight: float
@@ -176,6 +184,7 @@ class RealizedTrade(BaseModel):
     cost_basis: float
     realized_pnl: float
     realized_pnl_rate: float
+    trade_type: TradeType = "一般"
     reason: str | None = None
 
 
