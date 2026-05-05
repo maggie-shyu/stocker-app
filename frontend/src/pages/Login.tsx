@@ -2,8 +2,12 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../contexts/AuthContext";
+import { Button } from "../components/shared/UI";
 
 type Mode = "signin" | "signup";
+
+const DEMO_EMAIL = "catiya3171@justnapa.com";
+const DEMO_PASSWORD = "demo123";
 
 export function Login() {
   const { signIn, signUp, configError } = useAuth();
@@ -14,6 +18,27 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [signedUp, setSignedUp] = useState(false);
+
+  const handleDemoLogin = async () => {
+    setMode("signin");
+    setError(null);
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
+    setLoading(true);
+    try {
+      await signIn(DEMO_EMAIL, DEMO_PASSWORD);
+      navigate("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      if (message.includes("Failed to fetch")) {
+        setError("無法連線到 Supabase。請確認 frontend/.env 的 Supabase URL / Publishable Key 是否正確，並重新啟動前端。");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -99,6 +124,11 @@ export function Login() {
             />
           </label>
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {mode === "signin" ? (
+            <Button type="button" tone="secondary" className="w-full" onClick={handleDemoLogin} disabled={loading}>
+              Try with Demo Account
+            </Button>
+          ) : null}
           <button
             type="submit"
             disabled={loading}
