@@ -14,7 +14,7 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     coverage: {
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/main.tsx", "src/test/**", "src/api/types.ts", "src/api/client.ts"]
+      exclude: ["src/main.tsx", "src/test/**", "src/platform/api/client.ts"]
     }
   }
 });

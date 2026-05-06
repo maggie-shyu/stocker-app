@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.routers import admin, cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
+from backend.api import admin, cashflow, dashboard, export, holdings, realized, settings, stocks, transactions
 
 
 settings_obj = get_settings()
