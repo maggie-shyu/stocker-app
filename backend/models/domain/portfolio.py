@@ -26,6 +26,7 @@ class Holding(BaseModel):
     net_avg_cost: float
     avg_cost: float
     current_price: float
+    previous_close: float
     market_value: float
     cost_basis: float
     cumulative_dividend: float
@@ -55,6 +56,13 @@ class DividendIncomeByStock(BaseModel):
     code: str
     name: str
     dividend_income: float
+
+
+class DividendRecord(BaseModel):
+    code: str
+    name: str
+    date: date
+    income: float
 
 
 class PortfolioSnapshot(BaseModel):

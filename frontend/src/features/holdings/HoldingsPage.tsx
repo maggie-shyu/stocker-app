@@ -134,6 +134,11 @@ export function HoldingsPage() {
                       </div>
                       <p className="mt-2 text-sm text-muted">
                         {holding.total_shares.toLocaleString()} 股 · 成本均 {price(holding.net_avg_cost)} · 買均 {price(holding.avg_cost)} · 現價 {price(holding.current_price)}
+                        {holding.previous_close > 0 && (
+                          <span className={`ml-1 ${signedClass((holding.current_price - holding.previous_close) / holding.previous_close)}`}>
+                            ({percent((holding.current_price - holding.previous_close) / holding.previous_close)})
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 sm:justify-end">

@@ -2,8 +2,8 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.api.deps import get_ledger_store, get_price_service
-from backend.domain.ledger.interfaces import LedgerStore
+from backend.api.deps import get_ledger_store, get_price_service, get_stock_catalog
+from backend.domain.ledger.interfaces import LedgerStore, StockCatalog
 from backend.domain.portfolio.price_service import PriceService
 from backend.models.api.ledger import TransactionCreate, TransactionPage
 from backend.models.domain.ledger import TransactionRecord
@@ -47,11 +47,16 @@ async def create_transaction(
     payload: TransactionCreate,
     ledger_store: LedgerStore = Depends(get_ledger_store),
     prices: PriceService = Depends(get_price_service),
+    stock_catalog: StockCatalog = Depends(get_stock_catalog),
 ):
     current_price = 0.0
     quote = await prices.get_price(payload.code, payload.name)
     if quote.price is not None:
         current_price = quote.price
+    # Ensure the stock exists in the catalog (adds it if not found)
+    known = {s.code for s in stock_catalog.read_stocks()}
+    if payload.code not in known:
+        stock_catalog.upsert_stock(payload.code, payload.name)
     return ledger_store.append_transaction(payload, current_price=current_price)
 
 

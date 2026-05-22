@@ -1,5 +1,5 @@
-import { Activity, BadgeDollarSign, Coins, Trophy } from "lucide-react";
-import { useMemo } from "react";
+import { Activity, BadgeDollarSign, ChevronDown, Coins, Trophy } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -7,6 +7,7 @@ import { useInstallNumberInputStyles } from "../../platform/browser/installNumbe
 import { MetricCard } from "../../shared/ui/MetricCard";
 import { money, percent, price, signedClass } from "../../shared/lib/format";
 import { Badge, Card, EmptyState, PageHeader, SkeletonBlock } from "../../shared/ui/UI";
+import type { DividendRecord, RealizedTrade } from "./types";
 import { SortableHeader } from "./components/SortableHeader";
 import { useLedgerTable } from "./hooks/useLedgerTable";
 import { useRealized } from "./queries";
@@ -26,6 +27,42 @@ type RealizedStockRow = {
   twseDividendYield: number | null;
 };
 
+function TradeDetails({ trades, dividends }: { trades: RealizedTrade[]; dividends: DividendRecord[] }) {
+  if (!trades.length && !dividends.length) return <p className="px-1 text-sm text-muted">沒有交易明細。</p>;
+  return (
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-4 gap-2 px-1 text-xs font-bold uppercase tracking-[0.12em] text-muted">
+        <span>日期</span>
+        <span className="text-right">賣均</span>
+        <span className="text-right">買均</span>
+        <span className="text-right">損益</span>
+      </div>
+      {trades.map((t) => (
+        <div
+          key={`${t.code}-${t.date}-${t.avg_sell_price}`}
+          className="grid grid-cols-4 gap-2 rounded-xl border border-line/70 bg-white/75 px-3 py-2.5 text-sm"
+        >
+          <span className="font-semibold text-ink">{t.date}</span>
+          <span className="text-right text-muted">{price(t.avg_sell_price)}</span>
+          <span className="text-right text-muted">{price(t.avg_buy_price)}</span>
+          <span className={`text-right font-semibold ${signedClass(t.realized_pnl)}`}>{money(t.realized_pnl)}</span>
+        </div>
+      ))}
+      {dividends.map((d) => (
+        <div
+          key={`${d.code}-${d.date}-div`}
+          className="grid grid-cols-4 gap-2 rounded-xl border border-line/70 bg-amber-50/60 px-3 py-2.5 text-sm"
+        >
+          <span className="font-semibold text-ink">{d.date}</span>
+          <span className="text-right text-muted">-</span>
+          <span className="text-right text-muted">-</span>
+          <span className={`text-right font-semibold ${signedClass(d.income)}`}>{money(d.income)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function formatYAxisK(value: number) {
   if (value === 0) return "0";
   const scaled = value / 1000;
@@ -35,6 +72,7 @@ function formatYAxisK(value: number) {
 
 export function RealizedPage() {
   const { data, isLoading } = useRealized();
+  const [expandedCode, setExpandedCode] = useState<string | null>(null);
   useInstallNumberInputStyles();
 
   // Fetch TWSE dividend yield for all listed stocks (cached 1h)
@@ -270,30 +308,50 @@ export function RealizedPage() {
         </div>
 
         <div className="grid gap-3 p-4 lg:hidden">
-          {paginatedItems.map((item) => (
-            <article key={item.code} className="rounded-2xl border border-line bg-panel p-4 shadow-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-bold">{item.code} {item.name}</div>
-                  <p className="mt-1 text-sm text-muted">賣均 {price(item.avg_sell_price)} · 買均 {price(item.avg_buy_price)}</p>
-                </div>
-                <div className={`text-right font-bold ${signedClass(item.realized_profit)}`}>
-                  {money(item.realized_profit)}
-                  <div className="text-xs">{percent(item.realized_pnl_rate)}</div>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-muted">資本利得</div>
-                  <div className={`mt-1 font-semibold ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</div>
-                </div>
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-muted">股息收入</div>
-                  <div className={`mt-1 font-semibold ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</div>
-                </div>
-              </div>
-            </article>
-          ))}
+          {paginatedItems.map((item) => {
+            const isExpanded = expandedCode === item.code;
+            const trades = (data?.items ?? []).filter((t) => t.code === item.code);
+            const dividends = (data?.all_dividends ?? []).filter((d) => d.code === item.code);
+            return (
+              <article key={item.code} className="rounded-2xl border border-line bg-panel shadow-card transition">
+                <button
+                  type="button"
+                  className="w-full cursor-pointer p-4 text-left"
+                  onClick={() => setExpandedCode(isExpanded ? null : item.code)}
+                  aria-expanded={isExpanded}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold">{item.code} {item.name}</div>
+                      <p className="mt-1 text-sm text-muted">賣均 {price(item.avg_sell_price)} · 買均 {price(item.avg_buy_price)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`text-right font-bold ${signedClass(item.realized_profit)}`}>
+                        {money(item.realized_profit)}
+                        <div className="text-xs">{percent(item.realized_pnl_rate)}</div>
+                      </div>
+                      <ChevronDown className={`h-5 w-5 shrink-0 text-muted transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wide text-muted">資本利得</div>
+                      <div className={`mt-1 font-semibold ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wide text-muted">股息收入</div>
+                      <div className={`mt-1 font-semibold ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</div>
+                    </div>
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-line/60 px-4 pb-4 pt-3">
+                    <TradeDetails trades={trades} dividends={dividends} />
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
 
         <div className="relative z-0 hidden max-h-[34rem] overflow-auto lg:block">
@@ -309,23 +367,46 @@ export function RealizedPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {paginatedItems.map((item) => (
-                <tr key={item.code} className="bg-panel/70 hover:bg-white/75">
-                  <td className="px-4 py-3">{item.code} {item.name}</td>
-                  <td className="px-4 py-3 text-right">{price(item.avg_sell_price)}</td>
-                  <td className="px-4 py-3 text-right">{price(item.avg_buy_price)}</td>
-                  <td className={`px-4 py-3 text-right ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</td>
-                  <td className={`px-4 py-3 text-right ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</td>
-                  <td className={`px-4 py-3 text-right font-semibold ${signedClass(item.realized_profit)}`}>
-                    <div>{money(item.realized_profit)}</div>
-                    {item.capital_gain !== 0 ? (
-                      <div className="mt-1 text-xs font-normal text-muted">{percent(item.realized_pnl_rate)}</div>
-                    ) : (
-                      <div className="mt-1 text-xs font-normal text-muted">-</div>
+              {paginatedItems.map((item) => {
+                const isExpanded = expandedCode === item.code;
+                const trades = (data?.items ?? []).filter((t) => t.code === item.code);
+                const dividends = (data?.all_dividends ?? []).filter((d) => d.code === item.code);
+                return (
+                  <>
+                    <tr
+                      key={item.code}
+                      className="cursor-pointer bg-panel/70 hover:bg-white/75"
+                      onClick={() => setExpandedCode(isExpanded ? null : item.code)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {item.code} {item.name}
+                          <ChevronDown className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">{price(item.avg_sell_price)}</td>
+                      <td className="px-4 py-3 text-right">{price(item.avg_buy_price)}</td>
+                      <td className={`px-4 py-3 text-right ${signedClass(item.capital_gain)}`}>{money(item.capital_gain)}</td>
+                      <td className={`px-4 py-3 text-right ${signedClass(item.dividend_income)}`}>{money(item.dividend_income)}</td>
+                      <td className={`px-4 py-3 text-right font-semibold ${signedClass(item.realized_profit)}`}>
+                        <div>{money(item.realized_profit)}</div>
+                        {item.capital_gain !== 0 ? (
+                          <div className="mt-1 text-xs font-normal text-muted">{percent(item.realized_pnl_rate)}</div>
+                        ) : (
+                          <div className="mt-1 text-xs font-normal text-muted">-</div>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${item.code}-detail`} className="bg-teal-50/40">
+                        <td colSpan={6} className="px-4 pb-4 pt-3">
+                          <TradeDetails trades={trades} dividends={dividends} />
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                </tr>
-              ))}
+                  </>
+                );
+              })}
             </tbody>
             {summaryRow ? (
               <tfoot className="border-t border-line bg-white/95 text-[0.7rem] font-bold text-muted">

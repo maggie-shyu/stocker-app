@@ -20,6 +20,11 @@ class SupabaseStockCatalog:
         ]
         return self._stock_cache
 
+    def upsert_stock(self, code: str, name: str) -> None:
+        self._db.table("stocks").upsert({"code": code, "name": name}, on_conflict="code").execute()
+        # Invalidate cache so the new stock is visible in future searches
+        self._stock_cache = None
+
     def search_stocks(self, query: str, *, limit: int = 20) -> list[StockLookup]:
         normalized = query.strip().lower()
         all_stocks = self.read_stocks()

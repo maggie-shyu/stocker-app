@@ -7,7 +7,7 @@ import { api } from "../../platform/api/client";
 import { portfolioQueryKeys, useInvalidateQueries } from "../../platform/api/query";
 import { useInstallNumberInputStyles } from "../../platform/browser/installNumberInputStyles";
 import { money, price, shares as formatShares } from "../../shared/lib/format";
-import { Badge, Button, Card, EmptyState, Field, PageHeader, SelectField, SkeletonBlock } from "../../shared/ui/UI";
+import { Button, Card, EmptyState, Field, PageHeader, SelectField, SkeletonBlock } from "../../shared/ui/UI";
 import { SortableHeader } from "./components/SortableHeader";
 import { formatVisibleRowRange, useLedgerTable } from "./hooks/useLedgerTable";
 import { useTransactions } from "./queries";
@@ -181,10 +181,7 @@ export function TransactionsPage() {
         return;
       }
 
-      setForm((f) => ({
-        ...f,
-        ...(field === "code" ? { name: "" } : { code: "" }),
-      }));
+      // Don't clear the other field — user may have typed it manually
       setSuggestions(res.data);
       setActiveSuggestionField(res.data.length > 0 ? field : null);
     }, 200);

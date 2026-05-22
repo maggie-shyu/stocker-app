@@ -8,6 +8,7 @@ from backend.models.api.portfolio import RealizedResponse
 from backend.models.domain.ledger import TradeFinancials, TransactionRecord, UserSettings
 from backend.models.domain.portfolio import (
     DividendIncomeByStock,
+    DividendRecord,
     Holding,
     HoldingLot,
     PortfolioSnapshot,
@@ -262,8 +263,8 @@ def compute_portfolio(
         remaining_buy_amount = sum(lot.shares * lot.price_per_share for lot in lots)
         # 買均: 剩餘庫存批次的原始買入均價（FIFO 扣除已賣出股數後）
         avg_cost = remaining_buy_amount / total_shares if total_shares else 0
-        # 成本均: 剩餘庫存批次的持股總成本 / 剩餘股數
-        net_avg_cost = cost_basis / total_shares if total_shares else 0
+        # 成本均: (買入總金額+手續費−累計股利收入) / 持股總股數
+        net_avg_cost = (cost_basis - stock_div) / total_shares if total_shares else 0
         net_invested = cost_basis
         # 持股累積損益 = 市值 - 賣出手續費 - 交易稅 + 累計股息 - (買進金額 + 買進手續費)
         cum_pnl = market_value + stock_div - cost_basis - sell_trade_cost_by_code[code]
@@ -278,6 +279,7 @@ def compute_portfolio(
                 net_avg_cost=_money(net_avg_cost),
                 avg_cost=_money(avg_cost),
                 current_price=_money(current_price),
+                previous_close=_money(previous_close),
                 market_value=_money(market_value),
                 cost_basis=_money(cost_basis),
                 cumulative_dividend=_money(stock_div),
@@ -349,6 +351,7 @@ def summarize_realized(
     items: list[RealizedTrade],
     dividend_income: float = 0,
     dividend_by_stock: list[DividendIncomeByStock] | None = None,
+    all_dividends: list[DividendRecord] | None = None,
 ) -> RealizedResponse:
     wins = [item.realized_pnl for item in items if item.realized_pnl > 0]
     losses = [item.realized_pnl for item in items if item.realized_pnl < 0]
@@ -357,6 +360,7 @@ def summarize_realized(
     return RealizedResponse(
         items=items,
         dividend_by_stock=dividend_by_stock or [],
+        all_dividends=all_dividends or [],
         total_realized_pnl=_money(total_realized_pnl),
         dividend_income=_money(dividend_income),
         invested_capital=_money(invested_capital),

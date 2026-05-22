@@ -40,9 +40,17 @@ export type DividendIncomeByStock = {
   dividend_income: number;
 };
 
+export type DividendRecord = {
+  code: string;
+  name: string;
+  date: string;
+  income: number;
+};
+
 export type RealizedResponse = {
   items: RealizedTrade[];
   dividend_by_stock: DividendIncomeByStock[];
+  all_dividends: DividendRecord[];
   total_realized_pnl: number;
   dividend_income: number;
   invested_capital: number;

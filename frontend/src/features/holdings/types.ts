@@ -14,6 +14,7 @@ export type Holding = {
   net_avg_cost: number;
   avg_cost: number;
   current_price: number;
+  previous_close: number;
   market_value: number;
   cost_basis: number;
   cumulative_dividend: number;

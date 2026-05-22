@@ -3,7 +3,7 @@ from datetime import date
 from pydantic import BaseModel
 
 from backend.models.domain.ledger import TransactionRecord
-from backend.models.domain.portfolio import DividendIncomeByStock, RealizedTrade
+from backend.models.domain.portfolio import DividendIncomeByStock, DividendRecord, RealizedTrade
 
 
 class AccountOverviewHolding(BaseModel):
@@ -26,6 +26,7 @@ class AccountOverview(BaseModel):
 class RealizedResponse(BaseModel):
     items: list[RealizedTrade]
     dividend_by_stock: list[DividendIncomeByStock]
+    all_dividends: list[DividendRecord] = []
     total_realized_pnl: float
     dividend_income: float
     invested_capital: float

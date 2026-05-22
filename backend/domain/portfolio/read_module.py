@@ -8,7 +8,7 @@ from backend.domain.portfolio.calculator import compute_portfolio, summarize_rea
 from backend.domain.portfolio.price_service import PriceService
 from backend.models.api.portfolio import AccountOverviewHolding, DashboardResponse, PriceStatus, RealizedResponse
 from backend.models.domain.ledger import TransactionRecord
-from backend.models.domain.portfolio import DividendIncomeByStock, Holding, PortfolioSnapshot, PriceQuote
+from backend.models.domain.portfolio import DividendIncomeByStock, DividendRecord, Holding, PortfolioSnapshot, PriceQuote
 
 
 @dataclass
@@ -143,6 +143,7 @@ def read_realized(
         items = [item for item in items if item.date <= to_date]
 
     dividend_by_stock_map: dict[str, DividendIncomeByStock] = {}
+    all_dividends: list[DividendRecord] = []
     today = date.today()
     dividend_income = 0.0
     for tx in transactions:
@@ -158,6 +159,7 @@ def read_realized(
             continue
         dividend = float(tx.income or 0)
         dividend_income += dividend
+        all_dividends.append(DividendRecord(code=tx.code, name=tx.name, date=tx.date, income=dividend))
         current = dividend_by_stock_map.get(tx.code)
         if current:
             current.dividend_income += dividend
@@ -177,4 +179,5 @@ def read_realized(
         items,
         dividend_income=dividend_income,
         dividend_by_stock=dividend_by_stock,
+        all_dividends=all_dividends,
     )
