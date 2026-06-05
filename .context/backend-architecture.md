@@ -17,6 +17,14 @@ The backend is organized around a thin API layer, a domain layer, and concrete i
 - Supabase-backed storage lives in `backend/infrastructure/supabase/`.
 - Market data fetches go through `backend/infrastructure/market_data/yfinance_quote_provider.py`.
 
+## Keep-Alive 
+
+(for Render free tier)
+
+- Render spins down after 15 min idle → ~30s cold start
+- UptimeRobot (free) pings `GET /api/health` every 5 min to prevent spin-down
+- Monitor type: **Keyword**, keyword: `ok`, condition: **start incident when keyword doesn't exist**
+
 ## Testing
 
 - Integration tests live in `backend/tests/integration/`.

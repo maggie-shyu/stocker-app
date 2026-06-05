@@ -9,63 +9,66 @@ from backend.models.domain.portfolio import PriceQuote
 
 class YfinanceQuoteProvider:
     def fetch_quotes(self, codes: list[str], stock_names: dict[str, str]) -> list[PriceQuote]:
-        tickers_tw = [f"{code}.TW" for code in codes]
-        tickers_two = [f"{code}.TWO" for code in codes]
-        tickers = tickers_tw + tickers_two
-        try:
-            df = yf.download(
-                " ".join(tickers),
-                period="2d",
-                auto_adjust=True,
-                progress=False,
-                threads=True,
-            )
-        except Exception as exc:
-            print(f"[PriceService] yfinance batch error: {exc}")
-            return [PriceQuote(code=code, name=stock_names.get(code), price=None, delayed=True) for code in codes]
+        # Step 1: try all as .TW first (TWSE); collect those with no data for .TWO fallback
+        tw_close = self._download_close([f"{c}.TW" for c in codes], ".TW batch")
+        missing = [c for c in codes if not self._has_data(tw_close, f"{c}.TW")]
+
+        # Step 2: fetch only the codes that had no .TW data
+        two_close = self._download_close([f"{c}.TWO" for c in missing], ".TWO fallback") if missing else None
 
         results: list[PriceQuote] = []
-        close = df.get("Close")
-
         for code in codes:
-            ticker_tw = f"{code}.TW"
-            ticker_two = f"{code}.TWO"
             name = stock_names.get(code)
+            col = self._pick_column(tw_close, f"{code}.TW")
+            if col is None:
+                col = self._pick_column(two_close, f"{code}.TWO")
+            if col is None:
+                results.append(PriceQuote(code=code, name=name, price=None, delayed=True))
+                continue
             try:
-                if close is None:
-                    raise ValueError("no Close column")
-
-                column = None
-                if hasattr(close, "columns"):
-                    if ticker_tw in close.columns and not close[ticker_tw].dropna().empty:
-                        column = close[ticker_tw]
-                    elif ticker_two in close.columns and not close[ticker_two].dropna().empty:
-                        column = close[ticker_two]
-                else:
-                    column = close
-
-                if column is None or column.dropna().empty:
-                    raise ValueError("no data")
-
-                column = column.dropna()
-                price = float(column.iloc[-1])
-                previous_close = float(column.iloc[-2]) if len(column) >= 2 else None
-
-                results.append(
-                    PriceQuote(
-                        code=code,
-                        name=name,
-                        price=price,
-                        previous_close=previous_close,
-                        delayed=False,
-                        source="yfinance",
-                    )
-                )
+                col = col.dropna()
+                results.append(PriceQuote(
+                    code=code,
+                    name=name,
+                    price=float(col.iloc[-1]),
+                    previous_close=float(col.iloc[-2]) if len(col) >= 2 else None,
+                    delayed=False,
+                    source="yfinance",
+                ))
             except Exception as exc:
                 print(f"[PriceService] parse error for {code}: {exc}")
                 results.append(PriceQuote(code=code, name=name, price=None, delayed=True))
 
         return results
+
+    def _download_close(self, tickers: list[str], label: str):
+        """Download 2d Close data for tickers; returns Close df or None on error."""
+        if not tickers:
+            return None
+        try:
+            df = yf.download(" ".join(tickers), period="2d", auto_adjust=True, progress=False, threads=True)
+            return df.get("Close")
+        except Exception as exc:
+            print(f"[PriceService] yfinance error ({label}): {exc}")
+            return None
+
+    def _has_data(self, close, ticker: str) -> bool:
+        if close is None:
+            return False
+        if hasattr(close, "columns"):
+            return ticker in close.columns and not close[ticker].dropna().empty
+        return not close.dropna().empty  # single-ticker df has no columns level
+
+    def _pick_column(self, close, ticker: str):
+        """Return the Series for ticker, or None if unavailable."""
+        if close is None:
+            return None
+        if hasattr(close, "columns"):
+            if ticker in close.columns and not close[ticker].dropna().empty:
+                return close[ticker]
+            return None
+        # single-ticker download returns a plain Series
+        return close if not close.dropna().empty else None
 
     def get_benchmark_return_rate(self, ticker: str, start_date: date) -> float | None:
         today = date.today()
@@ -73,9 +76,11 @@ class YfinanceQuoteProvider:
             return None
 
         try:
+            # auto_adjust=True → Close = dividend-adjusted price (還原股價)
             df = yf.Ticker(ticker).history(
                 start=start_date - timedelta(days=7),
                 end=today + timedelta(days=2),
+                auto_adjust=True,
             )
             if df.empty:
                 return None
