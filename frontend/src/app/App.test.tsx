@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -206,8 +206,33 @@ const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock, authState } = vi.hoi
         data: [{ id: "2", date: "2025-08-04", deposit: 565554, withdrawal: 0 }],
       });
     }
+    if (url === "/feedbacks") {
+      return Promise.resolve({
+        data: [
+          {
+            id: "feedback-1",
+            subject: "儀表板資訊",
+            body: "希望儀表板可以多一點現金部位資訊",
+            created_at: "2026-01-01T00:00:00+00:00",
+            updated_at: "2026-01-01T00:00:00+00:00",
+          },
+        ],
+      });
+    }
     if (url === "/settings") {
-      return Promise.resolve({ data: { commission_discount_rate: 0 } });
+      return Promise.resolve({
+        data: {
+          commission_discount_rate: 0,
+          base_commission_rate: 0.001425,
+          minimum_fee: 20,
+          odd_lot_minimum_fee: 1,
+          cash_dividend_transfer_fee: 10,
+          stock_tax_rate: 0.003,
+          day_trade_tax_rate: 0.0015,
+          etf_tax_rate: 0.001,
+          bond_etf_tax_rate: 0,
+        },
+      });
     }
     if (url === "/stocks/search") {
       const query = String(config?.params?.q ?? "");
@@ -238,14 +263,40 @@ const { apiGetMock, apiPostMock, apiPutMock, apiDeleteMock, authState } = vi.hoi
           discounted_fee: 20,
           tax: action === "賣" ? 5 : 0,
           expense: 100020,
-          income: action === "賣" ? 99975 : 0,
+          income: action === "賣" ? 99975 : action === "股利" ? 990 : 0,
         },
       });
     }
     return Promise.resolve({ data: [] });
   }) as any,
-  apiPostMock: vi.fn(() => Promise.resolve({ data: {} })),
-  apiPutMock: vi.fn(() => Promise.resolve({ data: {} })),
+  apiPostMock: vi.fn((url: string, payload?: { subject?: string; body?: string }) => {
+    if (url === "/feedbacks") {
+      return Promise.resolve({
+        data: {
+          id: "feedback-new",
+          subject: payload?.subject ?? "",
+          body: payload?.body ?? "",
+          created_at: "2026-01-02T00:00:00+00:00",
+          updated_at: "2026-01-02T00:00:00+00:00",
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  }),
+  apiPutMock: vi.fn((url: string, payload?: { subject?: string; body?: string }) => {
+    if (url.startsWith("/feedbacks/")) {
+      return Promise.resolve({
+        data: {
+          id: url.split("/").pop(),
+          subject: payload?.subject ?? "",
+          body: payload?.body ?? "",
+          created_at: "2026-01-01T00:00:00+00:00",
+          updated_at: "2026-01-03T00:00:00+00:00",
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  }),
   apiDeleteMock: vi.fn(() => Promise.resolve({ data: {} })),
 }));
 
@@ -299,8 +350,9 @@ describe("App", () => {
 
     const desktopRow = screen.getAllByText("3130 一零四")[1]?.closest("tr");
     expect(desktopRow).not.toBeNull();
-    fireEvent.mouseEnter(desktopRow!);
+    await user.click(desktopRow!);
     expect((await screen.findAllByText("附註")).length).toBeGreaterThan(1);
+    expect((await screen.findAllByText(/買 · 手續費/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("決策原因")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("test")).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "編輯" }).length).toBeGreaterThan(0);
@@ -329,6 +381,61 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "設定" })).toBeInTheDocument();
     expect(await screen.findByText("手續費設定")).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "管理者後台" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /關於/ }));
+    expect(await screen.findByRole("heading", { name: "關於" })).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("主旨")).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("想跟我說...")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "取消" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /送出/ })).toBeInTheDocument();
+    expect(await screen.findByText("為什麼想做這個 App")).toBeInTheDocument();
+    expect(await screen.findByText("功能摘要")).toBeInTheDocument();
+    expect(await screen.findByText("產品路線")).toBeInTheDocument();
+  });
+
+  it("creates, loads, updates, and deletes feedback on the about page", async () => {
+    const user = userEvent.setup();
+    window.history.pushState({}, "", "/settings/about");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "關於" })).toBeInTheDocument();
+    const subjectInput = await screen.findByPlaceholderText("主旨");
+    const feedbackInput = await screen.findByPlaceholderText("想跟我說...");
+
+    await user.type(subjectInput, "提醒功能");
+    await user.type(feedbackInput, "想加入提醒功能");
+    await user.click(screen.getByRole("button", { name: /送出/ }));
+
+    expect(apiPostMock).toHaveBeenCalledWith("/feedbacks", { subject: "提醒功能", body: "想加入提醒功能" });
+    expect(await screen.findByText("已送出。")).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "儀表板資訊" }));
+    expect(subjectInput).toHaveValue("儀表板資訊");
+    expect(feedbackInput).toHaveValue("希望儀表板可以多一點現金部位資訊");
+    expect(screen.getByRole("button", { name: /刪除/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /更新/ })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "儀表板資訊" }));
+    expect(subjectInput).toHaveValue("");
+    expect(feedbackInput).toHaveValue("");
+    expect(screen.getByRole("button", { name: /送出/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "儀表板資訊" }));
+    await user.clear(subjectInput);
+    await user.type(subjectInput, "儀表板本金資訊");
+    await user.clear(feedbackInput);
+    await user.type(feedbackInput, "希望儀表板可以多一點現金和本金資訊");
+    expect(screen.getByRole("button", { name: /更新/ })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /更新/ }));
+
+    expect(apiPutMock).toHaveBeenCalledWith("/feedbacks/feedback-1", {
+      subject: "儀表板本金資訊",
+      body: "希望儀表板可以多一點現金和本金資訊",
+    });
+    expect(await screen.findByText("已更新。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /刪除/ }));
+    expect(apiDeleteMock).toHaveBeenCalledWith("/feedbacks/feedback-1");
   });
 
   it("renders the admin console for admin users", async () => {
@@ -420,7 +527,8 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "股利" }));
     await user.type(await screen.findByPlaceholderText("代號"), "2330");
     await user.type(screen.getByPlaceholderText("股票"), "台積電");
-    await user.type(screen.getByPlaceholderText("股利收入"), "1000");
+    await user.type(screen.getByPlaceholderText("股數"), "1000");
+    await user.type(screen.getByPlaceholderText("現金股利"), "1");
     await user.click(screen.getByRole("button", { name: "新增" }));
 
     expect((await screen.findAllByText(/手續費/)).length).toBeGreaterThan(0);
@@ -521,10 +629,10 @@ describe("App", () => {
           });
         }
         if (url === "/cashflow") return Promise.resolve({ data: [] });
-        if (url === "/settings") return Promise.resolve({ data: { commission_discount_rate: 0, base_commission_rate: 0.001425, minimum_fee: 20, odd_lot_minimum_fee: 1, stock_tax_rate: 0.003, day_trade_tax_rate: 0.0015, etf_tax_rate: 0.001, bond_etf_tax_rate: 0 } });
+        if (url === "/settings") return Promise.resolve({ data: { commission_discount_rate: 0, base_commission_rate: 0.001425, minimum_fee: 20, odd_lot_minimum_fee: 1, cash_dividend_transfer_fee: 10, stock_tax_rate: 0.003, day_trade_tax_rate: 0.0015, etf_tax_rate: 0.001, bond_etf_tax_rate: 0 } });
         if (url === "/stocks/preview-fee") {
           const action = config?.params?.action;
-          return Promise.resolve({ data: { discounted_fee: 20, tax: action === "賣" ? 5 : 0, expense: 100020, income: action === "賣" ? 99975 : 0 } });
+          return Promise.resolve({ data: { discounted_fee: action === "股利" ? 10 : 20, tax: action === "賣" ? 5 : 0, expense: 100020, income: action === "賣" ? 99975 : action === "股利" ? 990 : 0 } });
         }
         return Promise.resolve({ data: [] });
       }

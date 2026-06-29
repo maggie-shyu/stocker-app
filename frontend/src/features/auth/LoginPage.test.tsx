@@ -26,7 +26,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: "Try with Demo Account" }));
+    await user.click(screen.getByRole("button", { name: "搶先體驗 (免註冊)" }));
 
     expect(signInMock).toHaveBeenCalledWith("catiya3171@justnapa.com", "demo123");
     expect(navigateMock).toHaveBeenCalledWith("/");

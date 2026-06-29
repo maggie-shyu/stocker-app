@@ -42,6 +42,7 @@ def preview_fee(
     amount: float,
     code: str | None = None,
     shares: float | None = None,
+    price: float | None = None,
     trade_type: str = "一般",
     ledger_store: LedgerStore = Depends(get_ledger_store),
 ):
@@ -50,6 +51,7 @@ def preview_fee(
         trade_type=trade_type,
         code=code,
         shares=shares,
+        price=price,
         amount=amount,
         settings=ledger_store.get_settings(),
     )

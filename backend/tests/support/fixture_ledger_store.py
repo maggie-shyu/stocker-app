@@ -3,12 +3,12 @@ from __future__ import annotations
 import csv
 import json
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from backend.domain.portfolio.calculator import calculate_trade_financials
-from backend.models.api.ledger import CashflowCreate, TransactionCreate
-from backend.models.domain.ledger import CashflowRecord, TransactionRecord, UserSettings
+from backend.models.api.ledger import CashflowCreate, FeedbackCreate, TransactionCreate
+from backend.models.domain.ledger import CashflowRecord, FeedbackRecord, TransactionRecord, UserSettings
 from backend.models.domain.portfolio import StockLookup
 
 
@@ -24,6 +24,8 @@ class FixtureLedgerStore:
         "buy_price",
         "sell_shares",
         "sell_price",
+        "dividend_shares",
+        "dividend_price",
         "dividend_income",
         "reason",
     ]
@@ -31,6 +33,15 @@ class FixtureLedgerStore:
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
         self._stock_cache: list[StockLookup] | None = None
+        self._feedbacks: list[FeedbackRecord] = [
+            FeedbackRecord(
+                id="feedback-1",
+                subject="儀表板資訊",
+                body="希望儀表板可以多一點現金部位資訊",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+        ]
 
     @staticmethod
     def _float(value: str, default: float = 0.0) -> float:
@@ -52,11 +63,15 @@ class FixtureLedgerStore:
         buy_price: float | None = None,
         sell_shares: float | None = None,
         sell_price: float | None = None,
+        dividend_shares: float | None = None,
+        dividend_price: float | None = None,
     ) -> tuple[float | None, float | None]:
         if action == "買":
             return buy_shares, buy_price
         if action == "賣":
             return sell_shares, sell_price
+        if dividend_shares is not None and dividend_price is not None:
+            return dividend_shares, dividend_price
         return None, None
 
     def _build_transaction_record(
@@ -72,6 +87,8 @@ class FixtureLedgerStore:
         buy_price: float | None,
         sell_shares: float | None,
         sell_price: float | None,
+        dividend_shares: float | None,
+        dividend_price: float | None,
         dividend_income: float | None,
         reason: str | None,
         current_price: float = 0,
@@ -83,14 +100,17 @@ class FixtureLedgerStore:
             buy_price=buy_price,
             sell_shares=sell_shares,
             sell_price=sell_price,
+            dividend_shares=dividend_shares,
+            dividend_price=dividend_price,
         )
+        dividend_amount = None if action == "股利" and shares is not None and price is not None else dividend_income
         financials = calculate_trade_financials(
             action=action,
             trade_type=trade_type,
             code=code,
             shares=shares,
             price=price,
-            amount=dividend_income if action == "股利" else None,
+            amount=dividend_amount if action == "股利" else None,
             current_price=current_price,
             settings=settings,
         )
@@ -105,6 +125,8 @@ class FixtureLedgerStore:
             buy_price=buy_price,
             sell_shares=sell_shares,
             sell_price=sell_price,
+            dividend_shares=dividend_shares,
+            dividend_price=dividend_price,
             current_price=financials.current_price,
             raw_fee=financials.raw_fee,
             discounted_fee=financials.discounted_fee,
@@ -129,6 +151,8 @@ class FixtureLedgerStore:
             "buy_price": payload.buy_price if payload.buy_price is not None else "",
             "sell_shares": payload.sell_shares if payload.sell_shares is not None else "",
             "sell_price": payload.sell_price if payload.sell_price is not None else "",
+            "dividend_shares": payload.dividend_shares if payload.dividend_shares is not None else "",
+            "dividend_price": payload.dividend_price if payload.dividend_price is not None else "",
             "dividend_income": payload.dividend_income if payload.dividend_income is not None else "",
             "reason": payload.reason or "",
         }
@@ -156,7 +180,9 @@ class FixtureLedgerStore:
                 buy_price = self._optional_float(row["buy_price"])
                 sell_shares = self._optional_float(row["sell_shares"])
                 sell_price = self._optional_float(row["sell_price"])
-                dividend_income = self._optional_float(row["dividend_income"])
+                dividend_shares = self._optional_float(row.get("dividend_shares"))
+                dividend_price = self._optional_float(row.get("dividend_price"))
+                dividend_income = self._optional_float(row.get("dividend_income"))
                 records.append(
                     self._build_transaction_record(
                         row_id=row_id,
@@ -169,6 +195,8 @@ class FixtureLedgerStore:
                         buy_price=buy_price,
                         sell_shares=sell_shares,
                         sell_price=sell_price,
+                        dividend_shares=dividend_shares,
+                        dividend_price=dividend_price,
                         reason=row.get("reason") or None,
                         dividend_income=dividend_income,
                     )
@@ -181,13 +209,11 @@ class FixtureLedgerStore:
         *,
         current_price: float = 0,
     ) -> TransactionRecord:
-        path = self.data_dir / "transactions.csv"
         with self._write_lock:
-            with open(path, newline="", encoding="utf-8") as fh:
-                row_id = sum(1 for _ in csv.DictReader(fh)) + 1
-            with open(path, "a", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(fh, fieldnames=self._transaction_fields)
-                writer.writerow(self._transaction_row_from_payload(payload))
+            _, rows = self._read_csv_rows("transactions.csv")
+            row_id = len(rows) + 1
+            rows.append(self._transaction_row_from_payload(payload))
+            self._write_csv_rows("transactions.csv", self._transaction_fields, rows)
 
         return self._build_transaction_record(
             row_id=row_id,
@@ -200,6 +226,8 @@ class FixtureLedgerStore:
             buy_price=payload.buy_price,
             sell_shares=payload.sell_shares,
             sell_price=payload.sell_price,
+            dividend_shares=payload.dividend_shares,
+            dividend_price=payload.dividend_price,
             reason=payload.reason,
             dividend_income=payload.dividend_income,
             current_price=current_price,
@@ -212,11 +240,11 @@ class FixtureLedgerStore:
     ) -> TransactionRecord:
         row_index = int(row_id)
         with self._write_lock:
-            fieldnames, rows = self._read_csv_rows("transactions.csv")
+            _, rows = self._read_csv_rows("transactions.csv")
             if row_index < 1 or row_index > len(rows):
                 raise KeyError(row_id)
             rows[row_index - 1] = self._transaction_row_from_payload(payload)
-            self._write_csv_rows("transactions.csv", fieldnames, rows)
+            self._write_csv_rows("transactions.csv", self._transaction_fields, rows)
 
         return self._build_transaction_record(
             row_id=row_index,
@@ -229,6 +257,8 @@ class FixtureLedgerStore:
             buy_price=payload.buy_price,
             sell_shares=payload.sell_shares,
             sell_price=payload.sell_price,
+            dividend_shares=payload.dividend_shares,
+            dividend_price=payload.dividend_price,
             reason=payload.reason,
             dividend_income=payload.dividend_income,
         )
@@ -302,6 +332,42 @@ class FixtureLedgerStore:
             rows.pop(row_index - 1)
             self._write_csv_rows("cashflow.csv", fieldnames, rows)
 
+    def read_feedbacks(self) -> list[FeedbackRecord]:
+        return list(self._feedbacks)
+
+    def append_feedback(self, payload: FeedbackCreate) -> FeedbackRecord:
+        now = datetime.now(timezone.utc)
+        record = FeedbackRecord(
+            id=f"feedback-{len(self._feedbacks) + 1}",
+            subject=payload.subject,
+            body=payload.body,
+            created_at=now,
+            updated_at=now,
+        )
+        self._feedbacks.insert(0, record)
+        return record
+
+    def update_feedback(self, feedback_id: str, payload: FeedbackCreate) -> FeedbackRecord:
+        for index, feedback in enumerate(self._feedbacks):
+            if feedback.id == feedback_id:
+                updated = feedback.model_copy(
+                    update={
+                        "subject": payload.subject,
+                        "body": payload.body,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                )
+                self._feedbacks[index] = updated
+                return updated
+        raise KeyError(feedback_id)
+
+    def delete_feedback(self, feedback_id: str) -> None:
+        for index, feedback in enumerate(self._feedbacks):
+            if feedback.id == feedback_id:
+                self._feedbacks.pop(index)
+                return
+        raise KeyError(feedback_id)
+
     def get_settings(self) -> UserSettings:
         path = self.data_dir / "settings.json"
         with open(path, encoding="utf-8") as fh:
@@ -320,6 +386,12 @@ class FixtureLedgerStore:
                     stocks.append(StockLookup(code=code, name=name))
         self._stock_cache = stocks
         return stocks
+
+    def upsert_stock(self, code: str, name: str) -> None:
+        stocks = self.read_stocks()
+        self._stock_cache = [
+            stock for stock in stocks if stock.code != code
+        ] + [StockLookup(code=code, name=name)]
 
     def search_stocks(self, query: str, *, limit: int = 20) -> list[StockLookup]:
         query = query.strip().lower()

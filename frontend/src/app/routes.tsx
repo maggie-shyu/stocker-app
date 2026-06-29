@@ -10,6 +10,7 @@ import { HoldingsPage } from "../features/holdings/HoldingsPage";
 import { CashFlowPage } from "../features/ledger/CashFlowPage";
 import { RealizedPage } from "../features/ledger/RealizedPage";
 import { TransactionsPage } from "../features/ledger/TransactionsPage";
+import { AboutPage } from "../features/settings/AboutPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 
 export function AppRoutes() {
@@ -24,6 +25,7 @@ export function AppRoutes() {
           <Route path="/realized" element={<RealizedPage />} />
           <Route path="/cashflow" element={<CashFlowPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/about" element={<AboutPage />} />
           <Route element={<AdminRouteGuard />}>
             <Route path="/admin" element={<AdminPage />} />
           </Route>

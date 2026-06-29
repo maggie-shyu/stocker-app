@@ -12,6 +12,7 @@ export const queryKeys = {
   holdings: ["holdings"] as const,
   realized: ["realized"] as const,
   cashflows: ["cashflows"] as const,
+  feedbacks: ["feedbacks"] as const,
   settings: ["settings"] as const,
 };
 

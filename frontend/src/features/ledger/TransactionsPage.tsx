@@ -1,4 +1,4 @@
-import { Copy, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
+import { ChevronDown, Copy, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -20,7 +20,6 @@ const EMPTY_FORM = {
   trade_type: "一般",
   shares: "",
   price: "",
-  dividend_income: "",
   reason: "",
 };
 
@@ -31,19 +30,18 @@ function txToForm(tx: Transaction) {
     code: tx.code,
     name: tx.name,
     trade_type: tx.trade_type,
-    shares: String(tx.buy_shares ?? tx.sell_shares ?? ""),
-    price: String(tx.buy_price ?? tx.sell_price ?? ""),
-    dividend_income: tx.action === "股利" ? String(tx.amount) : "",
+    shares: String(tx.buy_shares ?? tx.sell_shares ?? tx.dividend_shares ?? ""),
+    price: String(tx.buy_price ?? tx.sell_price ?? tx.dividend_price ?? ""),
     reason: tx.reason ?? "",
   };
 }
 
 function tradeShares(tx: Transaction) {
-  return tx.buy_shares ?? tx.sell_shares ?? 0;
+  return tx.buy_shares ?? tx.sell_shares ?? tx.dividend_shares ?? 0;
 }
 
 function tradePrice(tx: Transaction) {
-  return tx.buy_price ?? tx.sell_price ?? 0;
+  return tx.buy_price ?? tx.sell_price ?? tx.dividend_price ?? 0;
 }
 
 function signedCashflow(tx: Transaction) {
@@ -61,7 +59,8 @@ function tradeFeeBreakdown(tx: Transaction) {
 }
 
 function tradeNote(tx: Transaction) {
-  return tradeFeeBreakdown(tx) || "股息";
+  const details = tradeFeeBreakdown(tx) || (tx.action === "股利" ? "股息" : "");
+  return [tx.action, details].filter(Boolean).join(" · ");
 }
 
 function signedMoney(value: number) {
@@ -86,7 +85,7 @@ export function TransactionsPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRowNumber, setEditingRowNumber] = useState<number | null>(null);
-  const [hoveredDetailId, setHoveredDetailId] = useState<string | null>(null);
+  const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null);
   const {
     commitPageInput,
     handlePageInputChange,
@@ -104,7 +103,7 @@ export function TransactionsPage() {
     items: data?.items ?? [],
     initialSortKey: "date",
     getSortValue: (tx: Transaction, currentSortKey) => {
-      if (currentSortKey === "shares") return tx.buy_shares ?? tx.sell_shares ?? 0;
+      if (currentSortKey === "shares") return tradeShares(tx);
       if (currentSortKey === "price") return tradePrice(tx);
       if (currentSortKey === "cashflow") return signedCashflow(tx);
       return (tx as unknown as Record<string, string | number>)[currentSortKey] ?? "";
@@ -204,25 +203,27 @@ export function TransactionsPage() {
   };
 
   const amount = useMemo(() => {
-    if (form.action === "股利") return Number(form.dividend_income || 0);
     return Number(form.shares || 0) * Number(form.price || 0);
-  }, [form.action, form.dividend_income, form.price, form.shares]);
+  }, [form.price, form.shares]);
   const shares = useMemo(() => Number(form.shares || 0), [form.shares]);
+  const formPrice = useMemo(() => Number(form.price || 0), [form.price]);
 
   const preview = useQuery({
-    queryKey: ["fee-preview", form.action, form.code, form.trade_type, shares, amount],
+    queryKey: ["fee-preview", form.action, form.code, form.trade_type, shares, formPrice, amount],
     enabled: amount > 0,
     queryFn: async () =>
       (
         await api.get("/stocks/preview-fee", {
-          params: { action: form.action, code: form.code, trade_type: form.trade_type, shares, amount },
+          params: { action: form.action, code: form.code, trade_type: form.trade_type, shares, price: formPrice, amount },
         })
       ).data,
   });
 
   const previewSummary = useMemo(() => {
     if (form.action === "股利") {
-      return `收入 ${money(preview.data?.income ?? amount)}`;
+      const fee = preview.data?.discounted_fee ?? 0;
+      const income = preview.data?.income ?? amount;
+      return `手續費 ${money(fee)} · 收入 ${money(income)}`;
     }
 
     if (form.action === "賣") {
@@ -252,7 +253,8 @@ export function TransactionsPage() {
       buy_price: form.action === "買" ? price : undefined,
       sell_shares: form.action === "賣" ? shares : undefined,
       sell_price: form.action === "賣" ? price : undefined,
-      dividend_income: form.action === "股利" ? Number(form.dividend_income || 0) : undefined,
+      dividend_shares: form.action === "股利" ? shares : undefined,
+      dividend_price: form.action === "股利" ? price : undefined,
       reason: form.reason,
     };
   };
@@ -266,7 +268,7 @@ export function TransactionsPage() {
   const createMutation = useMutation({
     mutationFn: () => api.post("/transactions", buildPayload()),
     onSuccess: () => {
-      setForm((f) => ({ ...f, code: "", name: "", shares: "", price: "", dividend_income: "", reason: "" }));
+      setForm((f) => ({ ...f, code: "", name: "", shares: "", price: "", reason: "" }));
       invalidateAll();
     },
   });
@@ -406,7 +408,10 @@ export function TransactionsPage() {
               <option value="當沖">當沖</option>
             </SelectField>
             {form.action === "股利" ? (
-              <Field label="股利收入" placeholder="股利收入" value={form.dividend_income} onChange={(e) => setForm({ ...form, dividend_income: e.target.value })} required />
+              <>
+                <Field label="股數" placeholder="股數" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} required />
+                <Field label="股利" placeholder="現金股利" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
+              </>
             ) : (
               <>
                 <Field label="股數" placeholder="股數" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} required />
@@ -487,7 +492,7 @@ export function TransactionsPage() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-muted">股價</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted">價格</div>
                   <div className="mt-1 font-semibold text-ink">{tradePrice(tx) ? price(tradePrice(tx)) : "-"}</div>
                 </div>
                 <div>
@@ -532,46 +537,69 @@ export function TransactionsPage() {
               <SortableHeader label="日期" sortKey="date" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95" />
               <SortableHeader label="股票" sortKey="code" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95" />
               <SortableHeader label="股數" sortKey="shares" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
-              <SortableHeader label="股價" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
+              <SortableHeader label="價格" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
               <SortableHeader label="收支" sortKey="cashflow" activeKey={sortKey} dir={sortDir} onSort={handleSort} className="sticky top-0 z-20 bg-white/95 text-right" />
             </tr>
           </thead>
           {paginatedItems.map((tx, index) => {
             const rowNumber = (page - 1) * pageSize + index + 1;
-            const isDetailOpen = hoveredDetailId === tx.id;
+            const isDetailOpen = expandedDetailId === tx.id;
 
             return (
               <tbody
                 key={tx.id}
                 className="group border-b border-line last:border-b-0"
-                onMouseEnter={() => setHoveredDetailId(tx.id)}
-                onMouseLeave={() => setHoveredDetailId((current) => (current === tx.id ? null : current))}
               >
-                <tr className="relative bg-panel/70 hover:bg-white/75">
+                <tr
+                  className="relative cursor-pointer bg-panel/70 hover:bg-white/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60"
+                  tabIndex={0}
+                  aria-expanded={isDetailOpen}
+                  onClick={() => setExpandedDetailId((current) => (current === tx.id ? null : tx.id))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setExpandedDetailId((current) => (current === tx.id ? null : tx.id));
+                    }
+                  }}
+                >
                   <td className="px-4 py-3 text-muted">{tx.date}</td>
                   <td className="px-4 py-3">{tx.code} {tx.name}</td>
                   <td className="px-4 py-3 text-right">
                     {`${tx.action === "買" ? "+" : tx.action === "賣" ? "−" : ""} ${tradeShares(tx) ? formatShares(tradeShares(tx)) : "-"}`}
                   </td>
                   <td className="px-4 py-3 text-right">{tradePrice(tx) ? price(tradePrice(tx)) : "-"}</td>
-                  <td className={`px-4 py-3 text-right font-semibold ${signedAmountClass(signedCashflow(tx))}`}>
-                    <div>{signedMoney(signedCashflow(tx))}</div>
+                  <td className={`px-4 py-3 font-semibold ${signedAmountClass(signedCashflow(tx))}`}>
+                    <div className="flex items-center justify-end gap-2">
+                      <span>{signedMoney(signedCashflow(tx))}</span>
+                      <button
+                        type="button"
+                        aria-label={isDetailOpen ? "收合交易明細" : "展開交易明細"}
+                        aria-expanded={isDetailOpen}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpandedDetailId((current) => (current === tx.id ? null : tx.id));
+                        }}
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-white hover:text-ink"
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isDetailOpen ? "rotate-180" : ""}`} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {isDetailOpen ? (
                   <tr className="bg-white/85">
                     <td colSpan={5} className="px-4 pb-4 pt-0">
-                      <div className="rounded-2xl border border-line bg-white/90 p-4 text-left text-sm text-ink shadow-sm">
+                      <div className="border-t border-line pt-3 text-left text-sm text-ink">
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)_auto] lg:items-start">
                           <div>
                             <div className="text-xs font-bold uppercase tracking-wide text-muted">附註</div>
                             <div className="mt-1 font-medium text-ink">{tradeNote(tx)}</div>
                           </div>
-                          <div className="border-l border-line pl-4">
+                          <div>
                             <div className="text-xs font-bold uppercase tracking-wide text-muted">筆記</div>
                             <div className="mt-1 whitespace-pre-wrap font-medium text-ink">{tx.reason || "未填寫"}</div>
                           </div>
-                          <div className="border-l border-line pl-4">
+                          <div>
                             <div className="text-xs font-bold uppercase tracking-wide text-muted">操作</div>
                             <div className="mt-1 flex gap-2 lg:justify-end">
                               <button

@@ -9,6 +9,8 @@ export type Transaction = {
   buy_price?: number | null;
   sell_shares?: number | null;
   sell_price?: number | null;
+  dividend_shares?: number | null;
+  dividend_price?: number | null;
   current_price: number;
   raw_fee?: number;
   discounted_fee?: number;

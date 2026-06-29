@@ -59,6 +59,8 @@ def export_data(ledger_store: LedgerStore = Depends(get_ledger_store)):
             "buy_price",
             "sell_shares",
             "sell_price",
+            "dividend_shares",
+            "dividend_price",
             "dividend_income",
             "reason",
         ]
@@ -75,6 +77,8 @@ def export_data(ledger_store: LedgerStore = Depends(get_ledger_store)):
                 tx.buy_price,
                 tx.sell_shares,
                 tx.sell_price,
+                tx.dividend_shares,
+                tx.dividend_price,
                 tx.income if tx.action == "股利" else None,
                 _safe_excel_cell(tx.reason),
             ]
@@ -130,25 +134,42 @@ async def import_data(
         if workbook["出入金"].max_row - 1 > settings.import_max_rows_per_sheet:
             raise HTTPException(status_code=400, detail="出入金 exceeds the maximum allowed row count")
 
-        transaction_rows = list(workbook["交易紀錄"].iter_rows(min_row=2, values_only=True))
+        transaction_sheet = workbook["交易紀錄"]
+        transaction_headers = [
+            str(cell).strip() if cell is not None else ""
+            for cell in next(transaction_sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        ]
+        transaction_rows = list(transaction_sheet.iter_rows(min_row=2, values_only=True))
         cashflow_rows = list(workbook["出入金"].iter_rows(min_row=2, values_only=True))
+
+        def transaction_value(row, name: str, fallback_index: int):
+            if name in transaction_headers:
+                index = transaction_headers.index(name)
+                return row[index] if index < len(row) else None
+            return row[fallback_index] if fallback_index < len(row) else None
 
         transactions = [
             TransactionCreate(
-                date=_parse_date(row[0]),
-                action=row[1],
-                code=str(row[2]),
-                name=str(row[3]),
-                trade_type=row[4] or "一般",
-                buy_shares=_optional_float(row[5]),
-                buy_price=_optional_float(row[6]),
-                sell_shares=_optional_float(row[7]),
-                sell_price=_optional_float(row[8]),
-                dividend_income=_optional_float(row[9]),
-                reason=str(row[10]).strip() if row[10] is not None else None,
+                date=_parse_date(transaction_value(row, "date", 0)),
+                action=transaction_value(row, "action", 1),
+                code=str(transaction_value(row, "code", 2)),
+                name=str(transaction_value(row, "name", 3)),
+                trade_type=transaction_value(row, "trade_type", 4) or "一般",
+                buy_shares=_optional_float(transaction_value(row, "buy_shares", 5)),
+                buy_price=_optional_float(transaction_value(row, "buy_price", 6)),
+                sell_shares=_optional_float(transaction_value(row, "sell_shares", 7)),
+                sell_price=_optional_float(transaction_value(row, "sell_price", 8)),
+                dividend_shares=_optional_float(transaction_value(row, "dividend_shares", 11)),
+                dividend_price=_optional_float(transaction_value(row, "dividend_price", 12)),
+                dividend_income=_optional_float(transaction_value(row, "dividend_income", 9)),
+                reason=(
+                    str(transaction_value(row, "reason", 10)).strip()
+                    if transaction_value(row, "reason", 10) is not None
+                    else None
+                ),
             )
             for row in transaction_rows
-            if row[0] is not None
+            if transaction_value(row, "date", 0) is not None
         ]
         cashflows = [
             CashflowCreate(

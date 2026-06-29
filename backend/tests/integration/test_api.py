@@ -226,6 +226,47 @@ def test_transactions_endpoint_applies_filters():
     assert body["items"][0]["code"] == "6274"
 
 
+def test_feedbacks_endpoint_supports_create_update_and_delete():
+    create_response = client.post(
+        "/api/feedbacks",
+        json={"subject": "提醒功能", "body": "希望可以新增提醒功能"},
+    )
+
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["subject"] == "提醒功能"
+    assert created["body"] == "希望可以新增提醒功能"
+
+    list_response = client.get("/api/feedbacks")
+    assert list_response.status_code == 200
+    assert any(item["id"] == created["id"] for item in list_response.json())
+
+    update_response = client.put(
+        f"/api/feedbacks/{created['id']}",
+        json={"subject": "提醒與技術分析", "body": "希望可以新增提醒和技術分析"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["subject"] == "提醒與技術分析"
+    assert update_response.json()["body"] == "希望可以新增提醒和技術分析"
+
+    delete_response = client.delete(f"/api/feedbacks/{created['id']}")
+    assert delete_response.status_code == 204
+
+
+def test_feedbacks_endpoint_rejects_empty_subject():
+    response = client.post("/api/feedbacks", json={"subject": "   ", "body": "body can have text"})
+
+    assert response.status_code == 422
+
+
+def test_feedbacks_endpoint_allows_empty_body():
+    response = client.post("/api/feedbacks", json={"subject": "只有主旨", "body": ""})
+
+    assert response.status_code == 200
+    assert response.json()["subject"] == "只有主旨"
+    assert response.json()["body"] == ""
+
+
 def test_dashboard_endpoint_returns_kpis_and_recent_transactions():
     # mock price service to return no live prices (price-independent assertions only)
     mock_svc = AsyncMock()
@@ -309,6 +350,17 @@ def test_stock_fee_preview_endpoint_uses_etf_tax_rate():
         settings=_test_svc.get_settings(),
     )
     assert response.json()["tax"] == expected.tax
+
+
+def test_stock_fee_preview_endpoint_uses_cash_dividend_transfer_fee():
+    response = client.get(
+        "/api/stocks/preview-fee",
+        params={"action": "股利", "shares": 1000, "price": 1, "amount": 1000, "trade_type": "一般"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["discounted_fee"] == pytest.approx(10)
+    assert response.json()["income"] == pytest.approx(990)
 
 
 def test_realized_endpoint_only_counts_dividends_before_last_sell(monkeypatch: pytest.MonkeyPatch):

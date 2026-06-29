@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -31,6 +31,8 @@ class TransactionRecord(BaseModel):
     buy_price: float | None = None
     sell_shares: float | None = None
     sell_price: float | None = None
+    dividend_shares: float | None = None
+    dividend_price: float | None = None
     current_price: float = 0
     raw_fee: float = 0
     discounted_fee: float = 0
@@ -50,11 +52,20 @@ class CashflowRecord(BaseModel):
     withdrawal: float = 0
 
 
+class FeedbackRecord(BaseModel):
+    id: str
+    subject: str
+    body: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class UserSettings(BaseModel):
     commission_discount_rate: float = Field(ge=0, le=1, default=1.0)
     base_commission_rate: float = Field(ge=0, default=0.001425)
     minimum_fee: float = Field(ge=0, default=20.0)
     odd_lot_minimum_fee: float = Field(ge=0, default=1.0)
+    cash_dividend_transfer_fee: float = Field(ge=0, default=10.0)
     stock_tax_rate: float = Field(ge=0, default=0.003)
     day_trade_tax_rate: float = Field(ge=0, default=0.0015)
     etf_tax_rate: float = Field(ge=0, default=0.001)

@@ -124,11 +124,6 @@ export function LoginPage() {
             />
           </label>
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-          {mode === "signin" ? (
-            <Button type="button" tone="secondary" className="w-full" onClick={handleDemoLogin} disabled={loading}>
-              Try with Demo Account
-            </Button>
-          ) : null}
           <button
             type="submit"
             disabled={loading}
@@ -136,6 +131,11 @@ export function LoginPage() {
           >
             {loading ? "處理中..." : mode === "signin" ? "登入" : "註冊"}
           </button>
+          {mode === "signin" ? (
+            <Button type="button" tone="secondary" className="w-full" onClick={handleDemoLogin} disabled={loading}>
+              搶先體驗 (免註冊)
+            </Button>
+          ) : null}
         </form>
       </div>
     </div>

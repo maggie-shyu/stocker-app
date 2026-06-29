@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Gauge,
+  Info,
   ListOrdered,
   PieChart,
   Settings,
@@ -32,6 +33,7 @@ const navGroups = [
     label: "系統設定",
     items: [
       { to: "/settings", label: "設定", icon: Settings },
+      { to: "/settings/about", label: "關於", icon: Info },
     ],
   },
 ];
@@ -77,7 +79,7 @@ export function AppShell() {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    end={item.to === "/"}
+                    end={item.to === "/" || item.to === "/settings"}
                     title={item.label}
                     className={({ isActive }) =>
                       `flex items-center gap-2 rounded-2xl px-2.5 py-2.5 text-sm font-bold transition sm:gap-3 sm:px-3.5 ${

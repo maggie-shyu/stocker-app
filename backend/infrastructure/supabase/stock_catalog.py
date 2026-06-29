@@ -13,7 +13,22 @@ class SupabaseStockCatalog:
     def read_stocks(self) -> list[StockLookup]:
         if self._stock_cache is not None:
             return self._stock_cache
-        rows = self._db.table("stocks").select("code, name").execute().data
+        # PostgREST caps each response at 1000 rows; page with range() until exhausted
+        rows: list[dict] = []
+        page, size = 0, 1000
+        while True:
+            batch = (
+                self._db.table("stocks")
+                .select("code, name")
+                .order("code")
+                .range(page * size, page * size + size - 1)
+                .execute()
+                .data
+            )
+            rows.extend(batch)
+            if len(batch) < size:
+                break
+            page += 1
         self._stock_cache = [
             StockLookup(code=row["code"], name=row["name"])
             for row in rows

@@ -134,6 +134,21 @@ def test_odd_lot_minimum_fee_from_settings():
     assert result.discounted_fee == 5
 
 
+def test_cash_dividend_income_subtracts_transfer_fee():
+    result = calculate_trade_financials(
+        action="股利",
+        trade_type="一般",
+        shares=1000,
+        price=1.5,
+        settings=UserSettings(cash_dividend_transfer_fee=10),
+    )
+
+    assert result.amount == pytest.approx(1500)
+    assert result.discounted_fee == pytest.approx(10)
+    assert result.trade_cost == pytest.approx(10)
+    assert result.income == pytest.approx(1490)
+
+
 def test_fifo_portfolio_price_independent_values():
     service = FixtureLedgerStore(DATA_DIR)
     portfolio = compute_portfolio(

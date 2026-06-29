@@ -1,16 +1,19 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
+from postgrest.exceptions import APIError
 
 from backend.infrastructure.supabase.ledger_store import SupabaseLedgerStore
-from backend.models.api.ledger import CashflowCreate, TransactionCreate
+from backend.models.api.ledger import CashflowCreate, FeedbackCreate, TransactionCreate
 from backend.models.domain.ledger import CashflowRecord, UserSettings
 
 
 USER_ID = "user-123"
 TX_UUID = "tx-uuid-1"
 CF_UUID = "cf-uuid-1"
+FEEDBACK_UUID = "feedback-uuid-1"
 TEST_SETTINGS = UserSettings(commission_discount_rate=1.0)
 
 
@@ -152,6 +155,33 @@ def test_get_settings_returns_stored_values(client):
     settings = svc.get_settings()
     assert settings.commission_discount_rate == 0.6
     assert settings.etf_tax_rate == 0.001
+    assert settings.cash_dividend_transfer_fee == 10.0
+
+
+def test_get_settings_falls_back_when_cash_dividend_fee_column_is_missing(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = [
+        APIError({"message": "column user_settings.cash_dividend_transfer_fee does not exist", "code": "42703"}),
+        SimpleNamespace(
+            data={
+                "commission_discount_rate": 0.6,
+                "base_commission_rate": 0.001425,
+                "minimum_fee": 20.0,
+                "odd_lot_minimum_fee": 1.0,
+                "stock_tax_rate": 0.003,
+                "day_trade_tax_rate": 0.0015,
+                "etf_tax_rate": 0.001,
+                "bond_etf_tax_rate": 0.0,
+            }
+        ),
+    ]
+    svc = make_service(client)
+
+    settings = svc.get_settings()
+
+    assert settings.cash_dividend_transfer_fee == 10.0
+    assert table.select.call_args_list[1].args[0] == svc._legacy_settings_columns
 
 
 def test_update_settings_upserts_row(client):
@@ -164,6 +194,22 @@ def test_update_settings_upserts_row(client):
 
     table.upsert.assert_called_once()
     assert result.commission_discount_rate == 0.6
+
+
+def test_update_settings_falls_back_when_cash_dividend_fee_column_is_missing(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.upsert.return_value.execute.side_effect = [
+        APIError({"message": "column user_settings.cash_dividend_transfer_fee does not exist", "code": "42703"}),
+        SimpleNamespace(data=[]),
+    ]
+    svc = make_service(client)
+
+    result = svc.update_settings(UserSettings(commission_discount_rate=0.6, cash_dividend_transfer_fee=10))
+
+    assert result.cash_dividend_transfer_fee == 10.0
+    legacy_payload = table.upsert.call_args_list[1].args[0]
+    assert "cash_dividend_transfer_fee" not in legacy_payload
 
 
 def test_append_transaction_builds_record_with_current_price(client):
@@ -232,12 +278,16 @@ def test_replace_transactions_inserts_all_payloads(client):
             code="2330",
             name="台積電",
             trade_type="一般",
-            dividend_income=200,
+            dividend_shares=100,
+            dividend_price=2,
         ),
     ]
 
     assert svc.replace_transactions(payloads) == 2
     table.insert.assert_called_once()
+    inserted_rows = table.insert.call_args.args[0]
+    assert inserted_rows[1]["dividend_shares"] == 100
+    assert inserted_rows[1]["dividend_price"] == 2
 
 
 def test_update_transaction_returns_updated_record(client):
@@ -327,3 +377,77 @@ def test_update_cashflow_raises_key_error_when_row_missing(client):
             CF_UUID,
             CashflowCreate(date=date(2025, 2, 1), deposit=50000, withdrawal=0),
         )
+
+
+def test_read_feedbacks_returns_user_rows(client):
+    stub_read_chain(
+        client,
+        [
+            {
+                "id": FEEDBACK_UUID,
+                "subject": "儀表板資訊",
+                "body": "希望可以看到更多儀表板資訊",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+    )
+    svc = make_service(client)
+
+    result = svc.read_feedbacks()
+
+    assert result[0].id == FEEDBACK_UUID
+    assert result[0].subject == "儀表板資訊"
+    assert result[0].body == "希望可以看到更多儀表板資訊"
+
+
+def test_append_feedback_inserts_content_for_user(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.insert.return_value.execute.return_value.data = [
+        {
+            "id": FEEDBACK_UUID,
+            "subject": "技術分析",
+            "body": "想加上技術分析",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-01T00:00:00+00:00",
+        }
+    ]
+    svc = make_service(client)
+
+    result = svc.append_feedback(FeedbackCreate(subject="技術分析", body="想加上技術分析"))
+
+    table.insert.assert_called_once_with({"user_id": USER_ID, "subject": "技術分析", "body": "想加上技術分析"})
+    assert result.subject == "技術分析"
+    assert result.body == "想加上技術分析"
+
+
+def test_update_feedback_scopes_update_to_user(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {
+            "id": FEEDBACK_UUID,
+            "subject": "更新主旨",
+            "body": "更新後的建議",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-02T00:00:00+00:00",
+        }
+    ]
+    svc = make_service(client)
+
+    result = svc.update_feedback(FEEDBACK_UUID, FeedbackCreate(subject="更新主旨", body="更新後的建議"))
+
+    assert result.subject == "更新主旨"
+    assert result.body == "更新後的建議"
+    table.update.assert_called_once_with({"subject": "更新主旨", "body": "更新後的建議", "updated_at": ANY})
+
+
+def test_delete_feedback_raises_key_error_when_row_missing(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.delete.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    svc = make_service(client)
+
+    with pytest.raises(KeyError):
+        svc.delete_feedback(FEEDBACK_UUID)

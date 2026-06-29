@@ -3,6 +3,7 @@
   "base_commission_rate": 0.001425,
   "minimum_fee": 20.0,
   "odd_lot_minimum_fee": 1.0,
+  "cash_dividend_transfer_fee": 10.0,
   "stock_tax_rate": 0.003,
   "day_trade_tax_rate": 0.0015,
   "etf_tax_rate": 0.001,

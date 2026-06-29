@@ -128,10 +128,13 @@ def calculate_trade_financials(
         settings = UserSettings(commission_discount_rate=1.0)
 
     if action == "股利":
+        transfer_fee = settings.cash_dividend_transfer_fee if shares is not None and price is not None and amount > 0 else 0
         return TradeFinancials(
             current_price=current_price,
-            amount=amount,
-            income=amount,
+            amount=_money(amount),
+            discounted_fee=_money(transfer_fee),
+            trade_cost=_money(transfer_fee),
+            income=_money(amount - transfer_fee),
             discount_rate=settings.commission_discount_rate,
         )
 

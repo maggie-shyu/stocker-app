@@ -71,13 +71,14 @@ function displayToRate(value: string) {
 }
 
 type TaxDraft = Pick<UserSettings, "stock_tax_rate" | "day_trade_tax_rate" | "etf_tax_rate" | "bond_etf_tax_rate">;
-type FeeDraft = Pick<UserSettings, "commission_discount_rate" | "base_commission_rate" | "minimum_fee" | "odd_lot_minimum_fee">;
+type FeeDraft = Pick<UserSettings, "commission_discount_rate" | "base_commission_rate" | "minimum_fee" | "odd_lot_minimum_fee" | "cash_dividend_transfer_fee">;
 
 const defaultSettings: UserSettings = {
   commission_discount_rate: 1,
   base_commission_rate: 0.001425,
   minimum_fee: 20,
   odd_lot_minimum_fee: 1,
+  cash_dividend_transfer_fee: 10,
   stock_tax_rate: 0.003,
   day_trade_tax_rate: 0.0015,
   etf_tax_rate: 0.001,
@@ -102,6 +103,7 @@ export function SettingsPage() {
     base_commission_rate: defaultSettings.base_commission_rate,
     minimum_fee: defaultSettings.minimum_fee,
     odd_lot_minimum_fee: defaultSettings.odd_lot_minimum_fee,
+    cash_dividend_transfer_fee: defaultSettings.cash_dividend_transfer_fee,
   });
 
   const [isTaxOpen, setIsTaxOpen] = useState(false);
@@ -118,7 +120,7 @@ export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const invalidateQueries = useInvalidateQueries();
-  const current = data ?? defaultSettings;
+  const current = { ...defaultSettings, ...data };
 
   const taxMutation = useMutation({
     mutationFn: async (patch: TaxDraft) =>
@@ -195,6 +197,7 @@ export function SettingsPage() {
         base_commission_rate: data.base_commission_rate,
         minimum_fee: data.minimum_fee,
         odd_lot_minimum_fee: data.odd_lot_minimum_fee,
+        cash_dividend_transfer_fee: data.cash_dividend_transfer_fee ?? defaultSettings.cash_dividend_transfer_fee,
       });
     }
   }, [data]);
@@ -234,7 +237,13 @@ export function SettingsPage() {
 
   const openFeeDialog = () => {
     setFeeMessage(null);
-    if (data) setFeeDraft({ commission_discount_rate: data.commission_discount_rate, base_commission_rate: data.base_commission_rate, minimum_fee: data.minimum_fee, odd_lot_minimum_fee: data.odd_lot_minimum_fee });
+    if (data) setFeeDraft({
+      commission_discount_rate: data.commission_discount_rate,
+      base_commission_rate: data.base_commission_rate,
+      minimum_fee: data.minimum_fee,
+      odd_lot_minimum_fee: data.odd_lot_minimum_fee,
+      cash_dividend_transfer_fee: data.cash_dividend_transfer_fee ?? defaultSettings.cash_dividend_transfer_fee,
+    });
     setIsFeeOpen(true);
   };
 
@@ -550,6 +559,15 @@ export function SettingsPage() {
             value={feeDraft.odd_lot_minimum_fee}
             onChange={(e) => setFeeDraft((p) => ({ ...p, odd_lot_minimum_fee: Number(e.target.value) }))}
             hint="預設 1 元"
+          />
+          <Field
+            label="現金股利匯款手續費 (TWD)"
+            type="number"
+            min="0"
+            step="1"
+            value={feeDraft.cash_dividend_transfer_fee}
+            onChange={(e) => setFeeDraft((p) => ({ ...p, cash_dividend_transfer_fee: Number(e.target.value) }))}
+            hint="預設 10 元"
           />
         </form>
       </DialogShell>
