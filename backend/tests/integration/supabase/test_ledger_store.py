@@ -54,7 +54,6 @@ def test_read_transactions_returns_records(client):
                 "buy_price": 224.5,
                 "sell_shares": None,
                 "sell_price": None,
-                "dividend_income": None,
                 "reason": None,
             }
         ],
@@ -82,7 +81,6 @@ def test_read_transactions_uses_stored_settings_when_not_passed(client):
                 "buy_price": 224.5,
                 "sell_shares": None,
                 "sell_price": None,
-                "dividend_income": None,
                 "reason": None,
             }
         ],
@@ -227,7 +225,6 @@ def test_append_transaction_builds_record_with_current_price(client):
             "buy_price": 224.5,
             "sell_shares": None,
             "sell_price": None,
-            "dividend_income": None,
             "reason": None,
         }
     ]
@@ -249,6 +246,50 @@ def test_append_transaction_builds_record_with_current_price(client):
     assert result.id == TX_UUID
     assert result.current_price == pytest.approx(250.0)
     assert result.discount_rate == pytest.approx(0.6)
+    inserted_row = table.insert.call_args.args[0]
+    assert "dividend_income" not in inserted_row
+
+
+def test_append_dividend_transaction_uses_shares_and_price(client):
+    table = MagicMock()
+    client.table.return_value = table
+    table.insert.return_value.execute.return_value.data = [
+        {
+            "id": TX_UUID,
+            "date": "2025-08-06",
+            "action": "股利",
+            "code": "3130",
+            "name": "一零四",
+            "trade_type": "一般",
+            "buy_shares": None,
+            "buy_price": None,
+            "sell_shares": None,
+            "sell_price": None,
+            "dividend_shares": 100.0,
+            "dividend_price": 2.0,
+            "reason": None,
+        }
+    ]
+    svc = make_service(client)
+
+    result = svc.append_transaction(
+        TransactionCreate(
+            date=date(2025, 8, 6),
+            action="股利",
+            code="3130",
+            name="一零四",
+            trade_type="一般",
+            dividend_shares=100,
+            dividend_price=2,
+        ),
+        UserSettings(commission_discount_rate=0.6),
+    )
+
+    assert result.income == pytest.approx(190)
+    inserted_row = table.insert.call_args.args[0]
+    assert inserted_row["dividend_shares"] == 100
+    assert inserted_row["dividend_price"] == 2
+    assert "dividend_income" not in inserted_row
 
 
 def test_replace_transactions_returns_zero_for_empty_payloads(client):
@@ -305,7 +346,6 @@ def test_update_transaction_returns_updated_record(client):
             "buy_price": None,
             "sell_shares": 1000.0,
             "sell_price": 250.0,
-            "dividend_income": None,
             "reason": "調節",
         }
     ]

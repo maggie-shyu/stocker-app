@@ -482,7 +482,7 @@ export function TransactionsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-bold">{tx.code} {tx.name}</div>
-                  <p className="mt-1 text-sm text-muted">{tx.date} · {tx.action}</p>
+                  <p className="mt-1 text-sm text-muted">{tx.date}</p>
                 </div>
                 <div className={`text-right font-bold ${signedAmountClass(signedCashflow(tx))}`}>
                   {signedMoney(signedCashflow(tx))}

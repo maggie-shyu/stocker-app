@@ -68,7 +68,6 @@ class SupabaseLedgerStore:
         sell_price = self._optional_float(row.get("sell_price"))
         dividend_shares = self._optional_float(row.get("dividend_shares"))
         dividend_price = self._optional_float(row.get("dividend_price"))
-        dividend_income = self._optional_float(row.get("dividend_income"))
 
         if action == "買":
             shares, price = buy_shares, buy_price
@@ -79,14 +78,12 @@ class SupabaseLedgerStore:
         else:
             shares, price = None, None
 
-        dividend_amount = None if action == "股利" and shares is not None and price is not None else dividend_income
         financials = calculate_trade_financials(
             action=action,
             trade_type=row.get("trade_type") or "一般",
             code=row["code"],
             shares=shares,
             price=price,
-            amount=dividend_amount if action == "股利" else None,
             current_price=current_price,
             settings=settings,
         )
@@ -151,7 +148,6 @@ class SupabaseLedgerStore:
             "sell_price": payload.sell_price,
             "dividend_shares": payload.dividend_shares,
             "dividend_price": payload.dividend_price,
-            "dividend_income": payload.dividend_income,
             "reason": payload.reason,
         }
         data = self._db.table("transactions").insert(row).execute().data[0]
@@ -175,7 +171,6 @@ class SupabaseLedgerStore:
                 "sell_price": payload.sell_price,
                 "dividend_shares": payload.dividend_shares,
                 "dividend_price": payload.dividend_price,
-                "dividend_income": payload.dividend_income,
                 "reason": payload.reason,
             }
             for payload in payloads
@@ -202,7 +197,6 @@ class SupabaseLedgerStore:
             "sell_price": payload.sell_price,
             "dividend_shares": payload.dividend_shares,
             "dividend_price": payload.dividend_price,
-            "dividend_income": payload.dividend_income,
             "reason": payload.reason,
         }
         result = (

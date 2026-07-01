@@ -17,7 +17,6 @@ class TransactionCreate(BaseModel):
     sell_price: float | None = None
     dividend_shares: float | None = None
     dividend_price: float | None = None
-    dividend_income: float | None = None
     reason: str | None = None
 
 

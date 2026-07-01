@@ -7,8 +7,7 @@ import {
   Info,
   ListOrdered,
   PieChart,
-  Settings,
-  PiggyBank
+  Settings
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
@@ -50,8 +49,8 @@ export function AppShell() {
         }`}
       >
         <div className={`flex h-20 items-center gap-3 px-5 ${isCollapsed ? "lg:justify-center lg:px-3" : ""}`}>
-          <div className="rounded-2xl bg-gradient-to-br from-moss to-accent p-3 text-white shadow-soft">
-            <PiggyBank className="h-6 w-6" aria-hidden="true" />
+          <div className="h-12 w-12 overflow-hidden rounded-2xl shadow-soft">
+            <img src="/favicon.svg" alt="" className="h-full w-full" aria-hidden="true" />
           </div>
           <div className={isCollapsed ? "lg:hidden" : ""}>
             <div className="text-xl font-black tracking-tight text-ink">Stocker</div>

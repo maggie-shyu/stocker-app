@@ -10,7 +10,8 @@ CREATE TABLE transactions (
     buy_price       numeric,
     sell_shares     numeric,
     sell_price      numeric,
-    dividend_income numeric,
+    dividend_shares numeric,
+    dividend_price  numeric,
     reason          text
 );
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;

@@ -91,7 +91,7 @@ def test_export_escapes_formula_like_cell_values():
     rows = list(workbook["交易紀錄"].iter_rows(values_only=True))
     assert rows[1][2] == "'=cmd"
     assert rows[1][3] == "'@danger"
-    assert rows[1][12] == "'+calc"
+    assert rows[1][11] == "'+calc"
 
 
 def test_import_reads_workbook_and_replaces_data():
@@ -101,11 +101,11 @@ def test_import_reads_workbook_and_replaces_data():
     transactions_sheet.append([
         "date", "action", "code", "name", "trade_type",
         "buy_shares", "buy_price", "sell_shares", "sell_price",
-        "dividend_shares", "dividend_price", "dividend_income", "reason"
+        "dividend_shares", "dividend_price", "reason"
     ])
     transactions_sheet.append([
         "2025-08-06", "買", "2330", "台積電", "一般",
-        1000, 950, None, None, None, None, None, "imported"
+        1000, 950, None, None, None, None, "imported"
     ])
 
     cashflow_sheet = workbook.create_sheet("出入金")
@@ -174,10 +174,10 @@ def test_import_rejects_excessive_row_count(monkeypatch: pytest.MonkeyPatch):
     transactions_sheet.append([
         "date", "action", "code", "name", "trade_type",
         "buy_shares", "buy_price", "sell_shares", "sell_price",
-        "dividend_shares", "dividend_price", "dividend_income", "reason"
+        "dividend_shares", "dividend_price", "reason"
     ])
-    transactions_sheet.append(["2025-08-06", "買", "2330", "台積電", "一般", 1000, 950, None, None, None, None, None, None])
-    transactions_sheet.append(["2025-08-07", "買", "2317", "鴻海", "一般", 1000, 200, None, None, None, None, None, None])
+    transactions_sheet.append(["2025-08-06", "買", "2330", "台積電", "一般", 1000, 950, None, None, None, None, None])
+    transactions_sheet.append(["2025-08-07", "買", "2317", "鴻海", "一般", 1000, 200, None, None, None, None, None])
 
     cashflow_sheet = workbook.create_sheet("出入金")
     cashflow_sheet.append(["date", "deposit", "withdrawal"])

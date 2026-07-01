@@ -286,7 +286,7 @@ export function AboutPage() {
                   setBodyDraft(event.target.value);
                   setFeedbackMessage(null);
                 }}
-                placeholder="想跟我說..."
+                placeholder="想跟我們說..."
                 className="min-h-[11rem] w-full resize-none rounded-2xl border border-line bg-white/80 py-4 pl-12 pr-4 text-sm leading-7 text-ink shadow-sm transition placeholder:text-stone-400 focus:border-accent focus:bg-white focus:outline-none focus:ring-2 focus:ring-accent/15 sm:min-h-[10rem]"
               />
               <span className="pointer-events-none absolute bottom-3 right-4 text-xs font-semibold text-muted">

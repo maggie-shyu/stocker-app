@@ -61,7 +61,6 @@ def export_data(ledger_store: LedgerStore = Depends(get_ledger_store)):
             "sell_price",
             "dividend_shares",
             "dividend_price",
-            "dividend_income",
             "reason",
         ]
     )
@@ -79,7 +78,6 @@ def export_data(ledger_store: LedgerStore = Depends(get_ledger_store)):
                 tx.sell_price,
                 tx.dividend_shares,
                 tx.dividend_price,
-                tx.income if tx.action == "股利" else None,
                 _safe_excel_cell(tx.reason),
             ]
         )
@@ -159,12 +157,11 @@ async def import_data(
                 buy_price=_optional_float(transaction_value(row, "buy_price", 6)),
                 sell_shares=_optional_float(transaction_value(row, "sell_shares", 7)),
                 sell_price=_optional_float(transaction_value(row, "sell_price", 8)),
-                dividend_shares=_optional_float(transaction_value(row, "dividend_shares", 11)),
-                dividend_price=_optional_float(transaction_value(row, "dividend_price", 12)),
-                dividend_income=_optional_float(transaction_value(row, "dividend_income", 9)),
+                dividend_shares=_optional_float(transaction_value(row, "dividend_shares", 9)),
+                dividend_price=_optional_float(transaction_value(row, "dividend_price", 10)),
                 reason=(
-                    str(transaction_value(row, "reason", 10)).strip()
-                    if transaction_value(row, "reason", 10) is not None
+                    str(transaction_value(row, "reason", 11)).strip()
+                    if transaction_value(row, "reason", 11) is not None
                     else None
                 ),
             )

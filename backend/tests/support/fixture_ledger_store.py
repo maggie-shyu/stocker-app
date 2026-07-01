@@ -26,7 +26,6 @@ class FixtureLedgerStore:
         "sell_price",
         "dividend_shares",
         "dividend_price",
-        "dividend_income",
         "reason",
     ]
 
@@ -89,7 +88,6 @@ class FixtureLedgerStore:
         sell_price: float | None,
         dividend_shares: float | None,
         dividend_price: float | None,
-        dividend_income: float | None,
         reason: str | None,
         current_price: float = 0,
     ) -> TransactionRecord:
@@ -103,14 +101,12 @@ class FixtureLedgerStore:
             dividend_shares=dividend_shares,
             dividend_price=dividend_price,
         )
-        dividend_amount = None if action == "股利" and shares is not None and price is not None else dividend_income
         financials = calculate_trade_financials(
             action=action,
             trade_type=trade_type,
             code=code,
             shares=shares,
             price=price,
-            amount=dividend_amount if action == "股利" else None,
             current_price=current_price,
             settings=settings,
         )
@@ -153,7 +149,6 @@ class FixtureLedgerStore:
             "sell_price": payload.sell_price if payload.sell_price is not None else "",
             "dividend_shares": payload.dividend_shares if payload.dividend_shares is not None else "",
             "dividend_price": payload.dividend_price if payload.dividend_price is not None else "",
-            "dividend_income": payload.dividend_income if payload.dividend_income is not None else "",
             "reason": payload.reason or "",
         }
 
@@ -182,7 +177,6 @@ class FixtureLedgerStore:
                 sell_price = self._optional_float(row["sell_price"])
                 dividend_shares = self._optional_float(row.get("dividend_shares"))
                 dividend_price = self._optional_float(row.get("dividend_price"))
-                dividend_income = self._optional_float(row.get("dividend_income"))
                 records.append(
                     self._build_transaction_record(
                         row_id=row_id,
@@ -198,7 +192,6 @@ class FixtureLedgerStore:
                         dividend_shares=dividend_shares,
                         dividend_price=dividend_price,
                         reason=row.get("reason") or None,
-                        dividend_income=dividend_income,
                     )
                 )
         return records
@@ -229,7 +222,6 @@ class FixtureLedgerStore:
             dividend_shares=payload.dividend_shares,
             dividend_price=payload.dividend_price,
             reason=payload.reason,
-            dividend_income=payload.dividend_income,
             current_price=current_price,
         )
 
@@ -260,7 +252,6 @@ class FixtureLedgerStore:
             dividend_shares=payload.dividend_shares,
             dividend_price=payload.dividend_price,
             reason=payload.reason,
-            dividend_income=payload.dividend_income,
         )
 
     def delete_transaction(self, row_id: int | str) -> None:
